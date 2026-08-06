@@ -6,12 +6,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         SparkleUpdater.shared.configureIfEnabled()
-        // Default until WorkspaceModel applies the saved preference.
         AppIconAppearance.apply(for: .system)
 
         appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { _, _ in
             Task { @MainActor in
-                // Only follow the system Dock icon when the user chose System.
                 NotificationCenter.default.post(name: .sexiqlSystemAppearanceDidChange, object: nil)
             }
         }
