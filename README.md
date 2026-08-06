@@ -4,11 +4,11 @@ The SQL client macOS deserves. Supports Postgres, MySQL, SQLite and Redis in a f
 
 ```
 ┌──────────────┬─────────────────────────────────────┬──────────────┐
-│  Sidebar     │  Tab bar · Run · Explain · Export   │  Inspector   │
+│  Sidebar     │  Tab bar · Run · Explain · Export   │  AI panel    │
 │              │ ┌─────────────────────────────────┐ │              │
-│ Connections  │ │ SQL editor — highlighting,      │ │ Connection   │
-│ Schema       │ │ ⌘⏎ run, line numbers            │ │ details      │
-│ Saved        │ ├─────────────────────────────────┤ │ Result info  │
+│ Connections  │ │ SQL editor — highlighting,      │ │ Explain SQL  │
+│ Schema       │ │ ⌘⏎ run, line numbers            │ │ Chat · copy  │
+│ Saved        │ ├─────────────────────────────────┤ │ Insert code  │
 │ History      │ │ Results grid — sort, filter,    │ │              │
 │              │ │ click-to-edit, undo/redo        │ │              │
 │              │ └─────────────────────────────────┘ │              │
