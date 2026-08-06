@@ -1,0 +1,54 @@
+name: SexiQL
+options:
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "26.0"
+packages:
+  SQLCore:
+    path: Packages/SQLCore
+  SQLDrivers:
+    path: Packages/SQLDrivers
+  SQLTunnel:
+    path: Packages/SQLTunnel
+  SQLEditor:
+    path: Packages/SQLEditor
+  SQLGrid:
+    path: Packages/SQLGrid
+  SQLImportExport:
+    path: Packages/SQLImportExport
+  SQLExplainer:
+    path: Packages/SQLExplainer
+  SQLUI:
+    path: Packages/SQLUI
+targets:
+  SexiQL:
+    type: application
+    platform: macOS
+    sources:
+      - App
+    entitlements:
+      path: App/SexiQL.entitlements
+    dependencies:
+      - package: SQLCore
+      - package: SQLDrivers
+      - package: SQLTunnel
+      - package: SQLEditor
+      - package: SQLGrid
+      - package: SQLImportExport
+      - package: SQLExplainer
+      - package: SQLUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sexiql.app
+        PRODUCT_NAME: SexiQL
+        SWIFT_VERSION: "6.0"
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGNING_ALLOWED: "YES"
+    scheme:
+      testTargets: []
