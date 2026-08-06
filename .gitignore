@@ -1,0 +1,14 @@
+# XCODE / BUILD ARTIFACTS
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcodeproj
+
+# SwiftPM
+.build/
+.swiftpm/
+.typecheck/
+
+# macOS
+.DS_Store
