@@ -1,7 +1,6 @@
 import SwiftUI
 import SQLUI
 
-/// One user or assistant turn in the AI chat.
 struct AIMessageBubble: View {
     let message: AIChatMessage
     var isStreamingMessage: Bool
