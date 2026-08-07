@@ -1,0 +1,352 @@
+import SwiftUI
+import AppKit
+import SQLGrid
+import SQLEditor
+import SQLImportExport
+import SQLDrivers
+import SQLUI
+
+struct ResultsPaneView: View {
+    @Environment(WorkspaceModel.self) private var model
+    let tabID: UUID
+
+    @State private var sortOrdinal: Int?
+    @State private var sortAscending = true
+    @State private var copyFeedback: String?
+
+    var body: some View {
+        Group {
+            if let plan = model.explainPlans[tabID] {
+                ExplainView(tabID: tabID, plan: plan)
+            } else if let error = model.explainErrors[tabID] {
+                VStack(spacing: SexiQLSpace.md) {
+                    Label("Explain failed", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(SexiQLColors.failed)
+                    Text(error)
+                        .font(SexiQLType.rowSubtitle)
+                        .textSelection(.enabled)
+                        .multilineTextAlignment(.center)
+                    Button("Dismiss") { model.clearExplain(tabID) }
+                        .buttonStyle(.borderless)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(SexiQLSpace.xl)
+            } else if let results = model.results[tabID], !results.isEmpty {
+                VStack(spacing: 0) {
+                    resultTabs(results)
+                    resultBody(results)
+                }
+            } else {
+                EmptyView()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+
+    private func resultTabs(_ results: [StatementResult]) -> some View {
+        VStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: SexiQLSpace.xs) {
+                    ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
+                        Button {
+                            model.selectedResultIndex[tabID] = index
+                        } label: {
+                            HStack(spacing: SexiQLSpace.sm) {
+                                StatusDot(color: statusColor(result.status), size: 7)
+                                Text(statementLabel(result.label))
+                                    .font(SexiQLType.rowSubtitle)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: 240, alignment: .leading)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background {
+                                if (model.selectedResultIndex[tabID] ?? 0) == index {
+                                    RoundedRectangle(cornerRadius: SexiQLRadius.sm, style: .continuous)
+                                        .fill(SexiQLColors.selectionFillStrong)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .help(result.label)
+                    }
+                }
+                .padding(.horizontal, SexiQLSpace.md)
+                .padding(.vertical, SexiQLSpace.sm)
+            }
+            .background(Color(nsColor: .controlBackgroundColor))
+
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor).opacity(0.45))
+                .frame(height: 1)
+        }
+    }
+
+    private func statusColor(_ status: StatementResult.Status) -> Color {
+        switch status {
+        case .pending, .running, .streaming: SexiQLColors.connecting
+        case .complete: SexiQLColors.connected
+        case .failed: SexiQLColors.failed
+        case .cancelled: SexiQLColors.disconnected
+        }
+    }
+
+    private func statementLabel(_ sql: String) -> String {
+        let collapsed = sql.replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return collapsed.isEmpty ? "(empty)" : collapsed
+    }
+
+    @ViewBuilder
+    private func resultBody(_ results: [StatementResult]) -> some View {
+        let index = min(model.selectedResultIndex[tabID] ?? 0, results.count - 1)
+        let result = results[index]
+        VStack(spacing: 0) {
+            switch result.status {
+            case .pending:
+                ProgressView("Queued…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .running, .streaming:
+                VStack(spacing: SexiQLSpace.lg) {
+                    ProgressView()
+                    Text(result.status == .running ? "Running…" : "Streaming \(result.model.rows.count) rows…")
+                        .font(SexiQLType.rowSubtitle)
+                        .foregroundStyle(.secondary)
+                    Button("Stop") {
+                        model.cancelRun(tabID)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .complete, .cancelled:
+                if result.model.columns.isEmpty {
+                    VStack(spacing: SexiQLSpace.md) {
+                        Image(systemName: result.status == .cancelled ? "stop.circle" : "checkmark.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(result.status == .cancelled ? SexiQLColors.disconnected : SexiQLColors.connected)
+                        Text(result.message ?? (result.status == .cancelled ? "Cancelled" : "OK"))
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    if result.status == .cancelled, let message = result.message {
+                        HStack(spacing: SexiQLSpace.sm) {
+                            Image(systemName: "stop.circle")
+                                .foregroundStyle(.secondary)
+                            Text(message)
+                                .font(SexiQLType.rowSubtitle)
+                                .foregroundStyle(.secondary)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, SexiQLSpace.lg)
+                        .padding(.vertical, SexiQLSpace.sm)
+                        .background(Color.primary.opacity(0.04))
+                    }
+                    resultToolbar(result)
+                    ResultsTableView(
+                        model: result.model,
+                        filterText: result.filterText,
+                        sortOrdinal: $sortOrdinal,
+                        sortAscending: $sortAscending,
+                        isEditable: result.editableTable != nil && result.status == .complete,
+                        onEditCell: { row, column, value in
+                            model.handleCellEdit(
+                                tabID: tabID,
+                                resultIndex: index,
+                                row: row,
+                                column: column,
+                                newValue: value
+                            )
+                        }
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    statusBar(result)
+                }
+            case .failed:
+                VStack(spacing: SexiQLSpace.md) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(SexiQLColors.failed)
+                    Text(result.message ?? "Query failed")
+                        .font(SexiQLType.rowTitle)
+                        .multilineTextAlignment(.center)
+                        .textSelection(.enabled)
+                }
+                .padding(SexiQLSpace.xl)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func resultToolbar(_ result: StatementResult) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: SexiQLSpace.md) {
+                TextField("Filter rows…", text: Binding(
+                    get: { result.filterText },
+                    set: { result.filterText = $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 200)
+
+                if result.editableTable != nil {
+                    Button {
+                        model.undoLastEdit(tabID: tabID, resultIndex: resultIndex(of: result))
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(result.undoStack.isEmpty)
+                    .help("Undo cell edit (⌘Z)")
+
+                    Button {
+                        model.redoLastEdit(tabID: tabID, resultIndex: resultIndex(of: result))
+                    } label: {
+                        Image(systemName: "arrow.uturn.forward")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(result.redoStack.isEmpty)
+                    .help("Redo cell edit (⌘⇧Z)")
+                }
+
+                Spacer(minLength: 0)
+
+                if let copyFeedback {
+                    Text(copyFeedback)
+                        .font(SexiQLType.meta)
+                        .foregroundStyle(.secondary)
+                        .transition(.opacity)
+                }
+
+                Menu {
+                    Button("Copy as CSV") { copyVisible(result, format: .csv) }
+                    Button("Copy as JSON") { copyVisible(result, format: .json) }
+                } label: {
+                    Label("Copy", systemImage: "doc.on.clipboard")
+                }
+                .menuStyle(.borderlessButton)
+                .help("Copy visible rows (respects filter and sort)")
+
+                Menu {
+                    Button("CSV…") { export(result, format: .csv) }
+                    Button("JSON…") { export(result, format: .json) }
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+                .menuStyle(.borderlessButton)
+                .help("Save full result set to a file")
+            }
+            .font(SexiQLType.rowTitle)
+            .padding(.horizontal, SexiQLSpace.lg)
+            .padding(.vertical, 7)
+            .background(Color(nsColor: .controlBackgroundColor))
+
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor).opacity(0.45))
+                .frame(height: 1)
+        }
+    }
+
+    private func resultIndex(of result: StatementResult) -> Int {
+        (model.results[tabID] ?? []).firstIndex(where: { $0.id == result.id }) ?? 0
+    }
+
+    private func copyVisible(_ result: StatementResult, format: ExportFormat) {
+        do {
+            let snap = ResultDisplayRows.snapshot(
+                model: result.model,
+                filterText: result.filterText,
+                sortOrdinal: sortOrdinal,
+                sortAscending: sortAscending
+            )
+            let content: String
+            switch format {
+            case .csv:
+                content = CSVCodec.encode(columns: snap.columns, rows: snap.rows)
+            case .json:
+                content = try JSONCodec.encode(columns: snap.columns, rows: snap.rows)
+            }
+            copyToPasteboard(content)
+            let n = snap.rows.count
+            withAnimation(.easeOut(duration: 0.12)) {
+                copyFeedback = n == 1 ? "Copied 1 row" : "Copied \(n) rows"
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                withAnimation(.easeIn(duration: 0.2)) {
+                    if copyFeedback?.hasPrefix("Copied") == true {
+                        copyFeedback = nil
+                    }
+                }
+            }
+        } catch {
+            model.activeError = "Copy failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func export(_ result: StatementResult, format: ExportFormat) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = format == .csv ? "result.csv" : "result.json"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let columns = result.model.columns.map(\.name)
+            let rows = result.model.rows.map(\.values)
+            let content: String
+            switch format {
+            case .csv:
+                content = CSVCodec.encode(columns: columns, rows: rows)
+            case .json:
+                content = try JSONCodec.encode(columns: columns, rows: rows)
+            }
+            try content.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            model.activeError = "Export failed: \(error.localizedDescription)"
+        }
+    }
+
+    private enum ExportFormat {
+        case csv
+        case json
+    }
+
+    private func statusBar(_ result: StatementResult) -> some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor).opacity(0.45))
+                .frame(height: 1)
+
+            HStack(spacing: 0) {
+                let rowCount = result.model.totalRowCount ?? result.model.rows.count
+                let colCount = result.model.columns.count
+
+                Text("\(rowCount) row\(rowCount == 1 ? "" : "s")")
+                statusDot()
+                Text("\(colCount) col\(colCount == 1 ? "" : "s")")
+
+                if let duration = result.duration {
+                    statusDot()
+                    Text(String(format: "%.3fs", duration))
+                }
+
+                Spacer(minLength: SexiQLSpace.md)
+
+                if let message = result.message, !message.isEmpty {
+                    Text(message)
+                        .lineLimit(1)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .font(SexiQLType.meta)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, SexiQLSpace.lg)
+            .padding(.vertical, 6)
+            .background(Color(nsColor: .controlBackgroundColor))
+        }
+    }
+
+    private func statusDot() -> some View {
+        Text("  ·  ")
+            .foregroundStyle(.tertiary)
+    }
+}
+
+
