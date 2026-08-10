@@ -1,6 +1,5 @@
 import Foundation
 
-/// Postgres type OIDs we understand. Everything else degrades to text.
 public enum PGTypeID: UInt32, Sendable, CaseIterable {
     case bool = 16
     case bytea = 17
