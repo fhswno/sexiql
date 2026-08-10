@@ -1,6 +1,5 @@
 import Foundation
 
-/// Pure Postgres message body decoding (rows, tags, errors) and text bind encoding.
 enum PGRowCodec: Sendable {
     static func parseRowDescription(_ payload: Data) throws -> [SQLColumn] {
         var reader = PGByteReader(data: payload)
