@@ -19,18 +19,11 @@ struct ResultsPaneView: View {
             if let plan = model.explainPlans[tabID] {
                 ExplainView(tabID: tabID, plan: plan)
             } else if let error = model.explainErrors[tabID] {
-                VStack(spacing: SexiQLSpace.md) {
-                    Label("Explain failed", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(SexiQLColors.failed)
-                    Text(error)
-                        .font(SexiQLType.rowSubtitle)
-                        .textSelection(.enabled)
-                        .multilineTextAlignment(.center)
-                    Button("Dismiss") { model.clearExplain(tabID) }
-                        .buttonStyle(.borderless)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(SexiQLSpace.xl)
+                QueryErrorView(
+                    title: "Explain failed",
+                    message: error,
+                    onDismiss: { model.clearExplain(tabID) }
+                )
             } else if let results = model.results[tabID], !results.isEmpty {
                 VStack(spacing: 0) {
                     resultTabs(results)
@@ -164,16 +157,11 @@ struct ResultsPaneView: View {
                     statusBar(result)
                 }
             case .failed:
-                VStack(spacing: SexiQLSpace.md) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(SexiQLColors.failed)
-                    Text(result.message ?? "Query failed")
-                        .font(SexiQLType.rowTitle)
-                        .multilineTextAlignment(.center)
-                        .textSelection(.enabled)
-                }
-                .padding(SexiQLSpace.xl)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                QueryErrorView(
+                    title: "Query failed",
+                    message: result.message ?? "Query failed",
+                    detailSQL: result.label
+                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -346,6 +334,82 @@ struct ResultsPaneView: View {
     private func statusDot() -> some View {
         Text("  ·  ")
             .foregroundStyle(.tertiary)
+    }
+}
+
+private struct QueryErrorView: View {
+    let title: String
+    let message: String
+    var detailSQL: String? = nil
+    var onDismiss: (() -> Void)? = nil
+
+    @State private var copied = false
+
+    var body: some View {
+        VStack(spacing: SexiQLSpace.md) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 28))
+                .foregroundStyle(SexiQLColors.failed)
+            Text(title)
+                .font(SexiQLType.rowTitle)
+                .foregroundStyle(.primary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: SexiQLSpace.sm) {
+                    Text(message)
+                        .font(.system(.callout, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .multilineTextAlignment(.leading)
+                    if let detailSQL, !detailSQL.isEmpty {
+                        Divider()
+                        Text("SQL sent")
+                            .font(SexiQLType.meta)
+                            .foregroundStyle(.tertiary)
+                        Text(detailSQL)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .multilineTextAlignment(.leading)
+                    }
+                }
+                .frame(maxWidth: 560, alignment: .leading)
+                .padding(SexiQLSpace.md)
+                .background(
+                    RoundedRectangle(cornerRadius: SexiQLRadius.sm, style: .continuous)
+                        .fill(Color(nsColor: .controlBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: SexiQLRadius.sm, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                )
+            }
+            .frame(maxHeight: 280)
+            HStack(spacing: SexiQLSpace.sm) {
+                Button {
+                    var paste = message
+                    if let detailSQL, !detailSQL.isEmpty {
+                        paste += "\n\n" + detailSQL
+                    }
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(paste, forType: .string)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        copied = false
+                    }
+                } label: {
+                    Label(copied ? "Copied" : "Copy Error", systemImage: copied ? "checkmark" : "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                if let onDismiss {
+                    Button("Dismiss", action: onDismiss)
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                }
+            }
+        }
+        .padding(SexiQLSpace.xl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
