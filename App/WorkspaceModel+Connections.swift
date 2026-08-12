@@ -187,6 +187,21 @@ extension WorkspaceModel {
         saveWorkspace()
     }
 
+    func moveConnection(id: UUID, before targetID: UUID?) {
+        guard id != targetID else { return }
+        guard let from = document.connections.firstIndex(where: { $0.id == id }) else { return }
+        var connections = document.connections
+        let item = connections.remove(at: from)
+        if let targetID, let to = connections.firstIndex(where: { $0.id == targetID }) {
+            connections.insert(item, at: to)
+        } else {
+            connections.append(item)
+        }
+        if connections.map(\.id) == document.connections.map(\.id) { return }
+        document.connections = connections
+        scheduleSaveWorkspace()
+    }
+
     func deleteProfile(_ profile: ConnectionProfile) {
         Task {
             try? await connectionManager.disconnect(profile.id)
