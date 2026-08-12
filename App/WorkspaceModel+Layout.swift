@@ -66,6 +66,14 @@ extension WorkspaceModel {
         }
     }
 
+    var copySelectedRowsFormat: CopySelectedRowsFormat {
+        get { document.settings.copySelectedRowsFormat }
+        set {
+            document.settings.copySelectedRowsFormat = newValue
+            saveWorkspace()
+        }
+    }
+
     func cycleAppearance() {
         appearance = appearance.next
     }
