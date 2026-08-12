@@ -70,6 +70,14 @@ final class WorkspaceDocumentTests: XCTestCase {
         XCTAssertFalse(settings.layout.inspectorVisible)
         XCTAssertFalse(settings.confirmBeforeDisconnect)
         XCTAssertEqual(settings.appearance, .system)
+        XCTAssertEqual(settings.copySelectedRowsFormat, .tsv)
+    }
+
+    func testCopySelectedRowsFormatRoundTrip() throws {
+        let settings = UserSettings(copySelectedRowsFormat: .json)
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(UserSettings.self, from: data)
+        XCTAssertEqual(decoded.copySelectedRowsFormat, .json)
     }
 
     func testAppearanceModeCycle() {
