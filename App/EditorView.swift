@@ -12,6 +12,7 @@ struct ResultsPaneView: View {
 
     @State private var sortOrdinal: Int?
     @State private var sortAscending = true
+    @State private var selectedRowIDs: Set<Int> = []
     @State private var copyFeedback: String?
 
     var body: some View {
@@ -35,6 +36,21 @@ struct ResultsPaneView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .textBackgroundColor))
+        .background {
+            OutsideClickMonitor(enabled: !selectedRowIDs.isEmpty) {
+                selectedRowIDs = []
+            }
+        }
+        .onChange(of: selectedResultIdentity) { _, _ in
+            selectedRowIDs = []
+        }
+    }
+
+    private var selectedResultIdentity: String {
+        guard let results = model.results[tabID], !results.isEmpty else { return "" }
+        let index = model.selectedResultIndex[tabID] ?? 0
+        let result = results.indices.contains(index) ? results[index] : results[0]
+        return result.id.uuidString
     }
 
     private func resultTabs(_ results: [StatementResult]) -> some View {
@@ -142,6 +158,7 @@ struct ResultsPaneView: View {
                         filterText: result.filterText,
                         sortOrdinal: $sortOrdinal,
                         sortAscending: $sortAscending,
+                        selectedIDs: $selectedRowIDs,
                         isEditable: result.editableTable != nil && result.status == .complete,
                         onEditCell: { row, column, value in
                             model.handleCellEdit(
@@ -151,7 +168,8 @@ struct ResultsPaneView: View {
                                 column: column,
                                 newValue: value
                             )
-                        }
+                        },
+                        onCopied: { showCopyFeedback($0) }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     statusBar(result)
@@ -213,7 +231,9 @@ struct ResultsPaneView: View {
                     Label("Copy", systemImage: "doc.on.clipboard")
                 }
                 .menuStyle(.borderlessButton)
-                .help("Copy visible rows (respects filter and sort)")
+                .help(selectedRowIDs.isEmpty
+                      ? "Copy visible rows (respects filter and sort)"
+                      : "Copy \(selectedRowIDs.count) selected row\(selectedRowIDs.count == 1 ? "" : "s")")
 
                 Menu {
                     Button("CSV…") { export(result, format: .csv) }
@@ -241,33 +261,43 @@ struct ResultsPaneView: View {
 
     private func copyVisible(_ result: StatementResult, format: ExportFormat) {
         do {
-            let snap = ResultDisplayRows.snapshot(
+            let built = ResultDisplayRows.build(
                 model: result.model,
                 filterText: result.filterText,
                 sortOrdinal: sortOrdinal,
                 sortAscending: sortAscending
             )
+            let rows: [[SQLValue]]
+            if selectedRowIDs.isEmpty {
+                rows = built.map(\.values)
+            } else {
+                rows = ResultDisplayRows.selected(from: built, ids: selectedRowIDs).map(\.values)
+            }
+            let columns = result.model.columns.map(\.name)
             let content: String
             switch format {
             case .csv:
-                content = CSVCodec.encode(columns: snap.columns, rows: snap.rows)
+                content = CSVCodec.encode(columns: columns, rows: rows)
             case .json:
-                content = try JSONCodec.encode(columns: snap.columns, rows: snap.rows)
+                content = try JSONCodec.encode(columns: columns, rows: rows)
             }
             copyToPasteboard(content)
-            let n = snap.rows.count
-            withAnimation(.easeOut(duration: 0.12)) {
-                copyFeedback = n == 1 ? "Copied 1 row" : "Copied \(n) rows"
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                withAnimation(.easeIn(duration: 0.2)) {
-                    if copyFeedback?.hasPrefix("Copied") == true {
-                        copyFeedback = nil
-                    }
-                }
-            }
+            showCopyFeedback(rows.count)
         } catch {
             model.activeError = "Copy failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func showCopyFeedback(_ n: Int) {
+        withAnimation(.easeOut(duration: 0.12)) {
+            copyFeedback = n == 1 ? "Copied 1 row" : "Copied \(n) rows"
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+            withAnimation(.easeIn(duration: 0.2)) {
+                if copyFeedback?.hasPrefix("Copied") == true {
+                    copyFeedback = nil
+                }
+            }
         }
     }
 
