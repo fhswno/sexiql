@@ -76,6 +76,8 @@ final class WorkspaceModel {
     var pendingTabRenameID: UUID?
     var settingsFocusSection: SettingsSection?
     var showingSettingsSearch = false
+    var copySelectedRowsHandler: (() -> Void)?
+    var canCopySelectedRows: Bool { copySelectedRowsHandler != nil }
 
     func isQueryRunning(on tabID: UUID?) -> Bool {
         guard let tabID else { return false }
