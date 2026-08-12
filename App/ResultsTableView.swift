@@ -35,12 +35,18 @@ struct ResultsTableView: View {
     private let hPad: CGFloat = 10
     private let resizeHandleWidth: CGFloat = 8
 
-    private var columnWidths: [CGFloat] {
-        model.columns.map { effectiveWidth(for: $0) }
+    private func fittedColumnWidths(available: CGFloat) -> [CGFloat] {
+        var widths = model.columns.map { effectiveWidth(for: $0) }
+        guard !widths.isEmpty else { return widths }
+        let used = indexWidth + widths.reduce(0, +)
+        if available > used {
+            widths[widths.count - 1] += available - used
+        }
+        return widths
     }
 
-    private var tableWidth: CGFloat {
-        indexWidth + columnWidths.reduce(0, +)
+    private func tableWidth(for widths: [CGFloat]) -> CGFloat {
+        indexWidth + widths.reduce(0, +)
     }
 
     private var columnSignature: String {
@@ -125,8 +131,8 @@ struct ResultsTableView: View {
     private func tableScroll(geo: GeometryProxy) -> some View {
         let rows = displayRows
         let displayIDs = rows.map(\.id)
-        let widths = columnWidths
-        let contentW = max(tableWidth, geo.size.width)
+        let widths = fittedColumnWidths(available: geo.size.width)
+        let contentW = max(tableWidth(for: widths), geo.size.width)
         let fill = max(0, geo.size.height - headerHeight - CGFloat(rows.count) * rowHeight)
 
         return ScrollView([.horizontal, .vertical], showsIndicators: true) {
@@ -202,12 +208,6 @@ struct ResultsTableView: View {
                     ordinal: column.ordinal
                 )
             }
-
-            if totalWidth > tableWidth {
-                Rectangle()
-                    .fill(Color(nsColor: .controlBackgroundColor))
-                    .frame(width: totalWidth - tableWidth, height: headerHeight)
-            }
         }
         .frame(height: headerHeight)
         .background(Color(nsColor: .controlBackgroundColor))
@@ -225,64 +225,67 @@ struct ResultsTableView: View {
         align: Alignment,
         ordinal: Int?
     ) -> some View {
-        ZStack(alignment: .trailing) {
-            Button {
-                if let ordinal {
-                    toggleSort(ordinal)
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    if align == .center {
-                        Spacer(minLength: 0)
-                    }
-                    Text(name)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    if let type {
-                        Text(type)
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                    if let ordinal, sortOrdinal == ordinal {
-                        Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.tertiary)
-                    }
+        Button {
+            if let ordinal {
+                toggleSort(ordinal)
+            }
+        } label: {
+            HStack(spacing: 6) {
+                if align == .center {
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, hPad)
-                .padding(.trailing, ordinal != nil ? resizeHandleWidth / 2 : 0)
-                .frame(width: width, height: headerHeight, alignment: align)
-                .contentShape(Rectangle())
+                Text(name)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if let type {
+                    Text(type)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+                if let ordinal, sortOrdinal == ordinal {
+                    Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.plain)
-
+            .padding(.horizontal, hPad)
+            .frame(width: width, height: headerHeight, alignment: align)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(width: width, height: headerHeight)
+        .overlay(alignment: .trailing) {
+            columnRule(height: headerHeight - 8)
+        }
+        .overlay(alignment: .trailing) {
             if let ordinal {
                 columnResizeHandle(ordinal: ordinal, currentWidth: width, columnName: name)
-            } else if name == "#" {
-                Rectangle()
-                    .fill(Color(nsColor: .separatorColor).opacity(0.35))
-                    .frame(width: 1, height: 16)
-                    .padding(.trailing, 0)
+                    .offset(x: resizeHandleWidth / 2)
             }
         }
-        .frame(width: width, height: headerHeight)
+    }
+
+    private func columnRule(height: CGFloat) -> some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor).opacity(0.28))
+            .frame(width: 1, height: height)
     }
 
     private func columnResizeHandle(ordinal: Int, currentWidth: CGFloat, columnName: String) -> some View {
         let active = hoveringResizeOrdinal == ordinal || resizeSession?.ordinal == ordinal
-        return ZStack {
-            Rectangle()
-                .fill(Color(nsColor: .separatorColor).opacity(active ? 0.85 : 0.35))
-                .frame(width: active ? 2 : 1, height: active ? headerHeight - 4 : 16)
-            Color.clear
-                .frame(width: resizeHandleWidth, height: headerHeight)
-                .contentShape(Rectangle())
-        }
-        .frame(width: resizeHandleWidth, height: headerHeight)
-        .contentShape(Rectangle())
+        return Color.clear
+            .frame(width: resizeHandleWidth, height: headerHeight)
+            .contentShape(Rectangle())
+            .overlay {
+                if active {
+                    Rectangle()
+                        .fill(Color(nsColor: .separatorColor).opacity(0.85))
+                        .frame(width: 1, height: headerHeight - 4)
+                }
+            }
         .onHover { hovering in
             if hovering {
                 hoveringResizeOrdinal = ordinal
@@ -381,17 +384,8 @@ struct ResultsTableView: View {
                     }
                 }
                 .overlay(alignment: .trailing) {
-                    if index < model.columns.count - 1 {
-                        Rectangle()
-                            .fill(Color(nsColor: .separatorColor).opacity(0.25))
-                            .frame(width: 1, height: rowHeight - 8)
-                    }
+                    columnRule(height: rowHeight - 8)
                 }
-            }
-
-            if totalWidth > tableWidth {
-                Color.clear
-                    .frame(width: totalWidth - tableWidth, height: rowHeight)
             }
         }
         .frame(height: rowHeight)
@@ -426,9 +420,12 @@ struct ResultsTableView: View {
         Text("\(row.number)")
             .font(.system(size: 11, design: .monospaced))
             .foregroundStyle(isSelected ? .primary : .tertiary)
-            .frame(width: indexWidth, height: rowHeight, alignment: .trailing)
             .padding(.trailing, hPad)
+            .frame(width: indexWidth, height: rowHeight, alignment: .trailing)
             .contentShape(Rectangle())
+            .overlay(alignment: .trailing) {
+                columnRule(height: rowHeight - 8)
+            }
             .background {
                 if hoveringIndexID == row.id, !isSelected {
                     SexiQLColors.hoverFill
