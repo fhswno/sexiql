@@ -27,7 +27,7 @@ public struct GridSelection: Sendable, Equatable {
     }
 }
 
-=public struct CellKey: Hashable, Sendable {
+public struct CellKey: Hashable, Sendable {
     public var row: Int
     public var column: Int
 
