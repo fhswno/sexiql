@@ -29,9 +29,12 @@ final class WorkspaceModel {
     var schemaObjects: [SchemaObject] = []
     var schemaColumnsByID: [String: [SchemaColumn]] = [:]
     var schemaExpandedIDs: Set<String> = []
+    var schemaByProfile: [UUID: (objects: [SchemaObject], columns: [String: [SchemaColumn]])] = [:]
     var schemaFilter: String = ""
     var schemaError: String?
     var isSchemaLoading = false
+    var schemaPrefetchTask: Task<Void, Never>?
+    var refreshEditorCompletion: (() -> Void)?
 
     var runningTabs: Set<UUID> = []
     var runTasks: [UUID: Task<Void, Never>] = [:]
