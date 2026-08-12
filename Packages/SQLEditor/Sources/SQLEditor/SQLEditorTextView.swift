@@ -236,19 +236,149 @@ public final class SQLEditorTextView: NSTextView {
 
     private static let baseFont = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
 
-    // MARK: - Run
+    // MARK: - Run / Comment
 
     public override func keyDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "\r" {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags == .command, event.charactersIgnoringModifiers == "\r" {
             run()
             return
         }
+        if flags == .command, event.charactersIgnoringModifiers == "/" {
+            toggleLineComment()
+            return
+        }
         super.keyDown(with: event)
+    }
+
+    public override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags == .command, event.charactersIgnoringModifiers == "/" {
+            toggleLineComment()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 
     public func run() {
         let sql = activeSQLSnippet()
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         onRun?(sql)
+    }
+
+    public func toggleLineComment() {
+        guard let textStorage else { return }
+        let full = textStorage.string as NSString
+        guard full.length > 0 || selectedRange().length == 0 else { return }
+
+        let sel = selectedRange()
+        var block = full.paragraphRange(for: NSRange(location: min(sel.location, full.length), length: 0))
+        if sel.length > 0 {
+            let endLoc = min(sel.location + sel.length, full.length)
+            var endRange = NSRange(location: endLoc, length: 0)
+            if endLoc > sel.location, endLoc < full.length {
+                let prev = full.character(at: endLoc - 1)
+                if prev == 10 || prev == 13 {
+                    endRange = NSRange(location: endLoc - 1, length: 0)
+                }
+            }
+            let endPara = full.paragraphRange(for: endRange)
+            let start = full.paragraphRange(for: NSRange(location: sel.location, length: 0)).location
+            let end = endPara.location + endPara.length
+            block = NSRange(location: start, length: max(0, end - start))
+        }
+
+        if full.length == 0 {
+            let insertion = "-- "
+            if shouldChangeText(in: NSRange(location: 0, length: 0), replacementString: insertion) {
+                textStorage.replaceCharacters(in: NSRange(location: 0, length: 0), with: insertion)
+                didChangeText()
+                setSelectedRange(NSRange(location: insertion.utf16.count, length: 0))
+                scheduleHighlight(delay: 0)
+            }
+            return
+        }
+
+        guard block.location + block.length <= full.length else { return }
+
+        var lineRanges: [NSRange] = []
+        full.enumerateSubstrings(in: block, options: [.byLines, .substringNotRequired]) { _, range, _, _ in
+            lineRanges.append(range)
+        }
+        if lineRanges.isEmpty {
+            lineRanges = [block]
+        }
+
+        let contentLines = lineRanges.filter { range in
+            let line = full.substring(with: range)
+            return !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let targets = contentLines.isEmpty ? lineRanges : contentLines
+
+        let allCommented = targets.allSatisfy { range in
+            let line = full.substring(with: range)
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            return trimmed.hasPrefix("--")
+        }
+
+        var replacements: [(NSRange, String)] = []
+        for range in targets {
+            let line = full.substring(with: range) as NSString
+            if allCommented {
+                var i = 0
+                while i < line.length {
+                    let ch = line.character(at: i)
+                    if ch == 32 || ch == 9 { i += 1; continue }
+                    break
+                }
+                guard i < line.length, line.character(at: i) == 45 else { continue }
+                var stripLen = 1
+                if i + 1 < line.length, line.character(at: i + 1) == 45 {
+                    stripLen = 2
+                    if i + 2 < line.length, line.character(at: i + 2) == 32 {
+                        stripLen = 3
+                    }
+                } else {
+                    continue
+                }
+                let stripRange = NSRange(location: range.location + i, length: stripLen)
+                replacements.append((stripRange, ""))
+            } else {
+                var i = 0
+                while i < line.length {
+                    let ch = line.character(at: i)
+                    if ch == 32 || ch == 9 { i += 1; continue }
+                    break
+                }
+                let insertAt = NSRange(location: range.location + i, length: 0)
+                replacements.append((insertAt, "-- "))
+            }
+        }
+
+        guard !replacements.isEmpty else { return }
+
+        undoManager?.beginUndoGrouping()
+        textStorage.beginEditing()
+        var delta = 0
+        let ordered = replacements.sorted { $0.0.location > $1.0.location }
+        for (range, text) in ordered {
+            if shouldChangeText(in: range, replacementString: text) {
+                textStorage.replaceCharacters(in: range, with: text)
+                delta += (text as NSString).length - range.length
+            }
+        }
+        textStorage.endEditing()
+        didChangeText()
+        undoManager?.endUndoGrouping()
+
+        let newLocation = block.location
+        let newLength = max(0, block.length + delta)
+        let maxLen = textStorage.length
+        let clamped = NSRange(
+            location: min(newLocation, maxLen),
+            length: min(newLength, max(0, maxLen - min(newLocation, maxLen)))
+        )
+        setSelectedRange(clamped)
+        scheduleHighlight(delay: 0)
     }
 }
