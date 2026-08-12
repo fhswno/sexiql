@@ -5,6 +5,7 @@ import SQLUI
 
 struct SidebarConnectionsView: View {
     @Environment(WorkspaceModel.self) private var model
+    @State private var draggingConnectionID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -36,8 +37,33 @@ struct SidebarConnectionsView: View {
                 ScrollView {
                     LazyVStack(spacing: SexiQLSpace.xxs) {
                         ForEach(model.document.connections) { connection in
-                            connectionRow(connection)
+                            let isDragging = draggingConnectionID == connection.id
+                            Group {
+                                if isDragging {
+                                    dropSlot
+                                } else {
+                                    connectionRow(connection)
+                                }
+                            }
+                            .onDrag {
+                                draggingConnectionID = connection.id
+                                return NSItemProvider(object: connection.id.uuidString as NSString)
+                            } preview: {
+                                dragPreview(connection)
+                            }
+                            .onDrop(
+                                of: [.text],
+                                delegate: reorderDelegate(targetID: connection.id)
+                            )
                         }
+                        Color.clear
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 28)
+                            .contentShape(Rectangle())
+                            .onDrop(
+                                of: [.text],
+                                delegate: reorderDelegate(targetID: nil)
+                            )
                     }
                     .padding(.horizontal, SexiQLSpace.md)
                     .padding(.bottom, SexiQLSpace.lg)
@@ -56,6 +82,47 @@ struct SidebarConnectionsView: View {
             }
             .padding(SexiQLSpace.lg)
         }
+    }
+
+    private func reorderDelegate(targetID: UUID?) -> ListReorderDropDelegate {
+        ListReorderDropDelegate(
+            targetID: targetID,
+            draggingID: { draggingConnectionID },
+            setDraggingID: { draggingConnectionID = $0 },
+            move: { dragged, before in
+                withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) {
+                    model.moveConnection(id: dragged, before: before)
+                }
+            }
+        )
+    }
+
+    private var dropSlot: some View {
+        RoundedRectangle(cornerRadius: SexiQLRadius.md, style: .continuous)
+            .fill(SexiQLColors.selectionFill)
+            .overlay {
+                RoundedRectangle(cornerRadius: SexiQLRadius.md, style: .continuous)
+                    .strokeBorder(Color.accentColor.opacity(0.45), style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+    }
+
+    private func dragPreview(_ connection: ConnectionProfile) -> some View {
+        HStack(spacing: SexiQLSpace.sm) {
+            Image(systemName: engineSymbol(connection.kind))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(SexiQLColors.engine(connection.kind.rawValue))
+            Text(connection.name)
+                .font(.callout.weight(.semibold))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: SexiQLRadius.md, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
     }
 
     private func connectionRow(_ connection: ConnectionProfile) -> some View {
