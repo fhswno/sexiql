@@ -35,6 +35,14 @@ struct SettingsView: View {
                             Text("Orange").tag(Optional("orange"))
                         }
                         Toggle("Compact result grid", isOn: compactGridBinding)
+                        Picker("Copy selected rows as", selection: copyFormatBinding) {
+                            ForEach(CopySelectedRowsFormat.allCases) { format in
+                                Text(format.displayName).tag(format)
+                            }
+                        }
+                        Text("Used by ⌘C and row Copy. Toolbar still offers CSV and JSON.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     } header: {
                         sectionHeader(.appearance)
                     }
@@ -152,6 +160,13 @@ struct SettingsView: View {
                 model.document.settings.tintName = $0
                 model.saveWorkspace()
             }
+        )
+    }
+
+    private var copyFormatBinding: Binding<CopySelectedRowsFormat> {
+        Binding(
+            get: { model.copySelectedRowsFormat },
+            set: { model.copySelectedRowsFormat = $0 }
         )
     }
 
