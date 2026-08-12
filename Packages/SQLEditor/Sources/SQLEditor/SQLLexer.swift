@@ -28,7 +28,7 @@ public struct SQLToken: Sendable, Equatable {
 
 /// Tokenizer for SQL.
 public struct SQLLexer: Sendable {
-    private static let keywords: Set<String> = [
+    public static let keywords: Set<String> = [
         "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "UPDATE", "DELETE",
         "CREATE", "DROP", "ALTER", "TABLE", "INDEX", "VIEW", "SEQUENCE", "SCHEMA",
         "DATABASE", "TRIGGER", "FUNCTION", "PROCEDURE", "JOIN", "LEFT", "RIGHT",
