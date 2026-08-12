@@ -20,6 +20,9 @@ public actor PostgresConnection: DatabaseConnection {
 
     private var authStage: AuthStage = .idle
 
+    private var queryOperationBusy = false
+    private var queryOperationWaiters: [CheckedContinuation<Void, Never>] = []
+
     public init(profile: ConnectionProfile) {
         self.profile = profile
     }
@@ -91,12 +94,15 @@ public actor PostgresConnection: DatabaseConnection {
         await transport.close()
         connected = false
         buffer.removeAll()
+        resetQueryOperationGate()
     }
 
     // MARK: - Query
 
     public func execute(_ sql: String) async throws -> QueryResult {
         try requireConnected()
+        await beginQueryOperation()
+        defer { endQueryOperation() }
         try await sendMessage(.query, PGQueryMessages.simpleQueryPayload(sql))
 
         var columns: [SQLColumn]?
@@ -115,21 +121,27 @@ public actor PostgresConnection: DatabaseConnection {
                 commandTag = PGRowCodec.parseCommandTag(payload)
             case .emptyQueryResponse:
                 return QueryResult()
+            case .noticeResponse, .parameterStatus, .notificationResponse:
+                continue
             case .errorResponse:
-                throw try PGRowCodec.parseErrorResponse(payload)
+                let error = try PGRowCodec.parseErrorResponse(payload)
+                try await drainUntilReady()
+                throw error
             case .readyForQuery:
                 if let columns {
                     return QueryResult(columns: columns, rows: rows)
                 }
                 return QueryResult(affectedRowCount: PGRowCodec.affectedRows(from: commandTag))
             default:
-                throw PGError(code: "08P01", message: "Unexpected message \(type.rawValue) during query")
+                try await failProtocol(type, context: "query")
             }
         }
     }
 
     public func execute(_ sql: String, parameters: [SQLValue]) async throws -> QueryResult {
         try requireConnected()
+        await beginQueryOperation()
+        defer { endQueryOperation() }
         try await sendParameterizedQuery(sql, parameters: parameters)
 
         var columns: [SQLColumn]?
@@ -148,21 +160,32 @@ public actor PostgresConnection: DatabaseConnection {
                 rows.append(try PGRowCodec.parseDataRow(payload, columns: columns))
             case .commandComplete:
                 commandTag = PGRowCodec.parseCommandTag(payload)
+            case .noticeResponse, .parameterStatus, .notificationResponse:
+                continue
             case .errorResponse:
-                throw try PGRowCodec.parseErrorResponse(payload)
+                let error = try PGRowCodec.parseErrorResponse(payload)
+                try await drainUntilReady()
+                throw error
             case .readyForQuery:
                 if let columns {
                     return QueryResult(columns: columns, rows: rows)
                 }
                 return QueryResult(affectedRowCount: PGRowCodec.affectedRows(from: commandTag))
             default:
-                throw PGError(code: "08P01", message: "Unexpected message \(type.rawValue) during parameterized query")
+                try await failProtocol(type, context: "parameterized query")
             }
         }
     }
 
     public func stream(_ sql: String) async throws -> StreamedQuery {
         try requireConnected()
+        await beginQueryOperation()
+        var handedOff = false
+        defer {
+            if !handedOff {
+                endQueryOperation()
+            }
+        }
         try await sendMessage(.query, PGQueryMessages.simpleQueryPayload(sql))
 
         var columns: [SQLColumn] = []
@@ -171,18 +194,23 @@ public actor PostgresConnection: DatabaseConnection {
             switch type {
             case .rowDescription:
                 columns = try PGRowCodec.parseRowDescription(payload)
+                handedOff = true
                 let stream = makeRowStream(columns: columns)
                 return StreamedQuery(columns: columns, rows: stream)
             case .commandComplete:
                 continue
             case .emptyQueryResponse:
                 return StreamedQuery(columns: [], rows: RowStream { $0.finish() })
+            case .noticeResponse, .parameterStatus, .notificationResponse:
+                continue
             case .errorResponse:
-                throw try PGRowCodec.parseErrorResponse(payload)
+                let error = try PGRowCodec.parseErrorResponse(payload)
+                try await drainUntilReady()
+                throw error
             case .readyForQuery:
                 return StreamedQuery(columns: [], rows: RowStream { $0.finish() })
             default:
-                throw PGError(code: "08P01", message: "Unexpected message \(type.rawValue) during query")
+                try await failProtocol(type, context: "query")
             }
         }
     }
@@ -196,21 +224,97 @@ public actor PostgresConnection: DatabaseConnection {
                         switch type {
                         case .dataRow:
                             continuation.yield(try PGRowCodec.parseDataRow(payload, columns: columns))
-                        case .commandComplete:
+                        case .commandComplete, .noticeResponse, .parameterStatus, .notificationResponse:
                             continue
                         case .errorResponse:
-                            throw try PGRowCodec.parseErrorResponse(payload)
+                            let error = try PGRowCodec.parseErrorResponse(payload)
+                            try await self.drainUntilReady()
+                            throw error
                         case .readyForQuery:
                             continuation.finish()
+                            await self.endQueryOperation()
                             return
                         default:
-                            throw PGError(code: "08P01", message: "Unexpected message \(type.rawValue) while streaming")
+                            try await self.failProtocol(type, context: "streaming")
                         }
                     }
                 } catch {
                     continuation.finish(throwing: error)
+                    await self.endQueryOperation()
                 }
             }
+        }
+    }
+
+    private func drainUntilReady() async throws {
+        while true {
+            let (type, _) = try await readMessage()
+            switch type {
+            case .readyForQuery:
+                return
+            case .noticeResponse, .commandComplete, .emptyQueryResponse,
+                 .parseComplete, .bindComplete, .closeComplete, .noData,
+                 .parameterDescription, .rowDescription, .dataRow,
+                 .parameterStatus, .notificationResponse, .portalSuspended:
+                continue
+            case .errorResponse:
+                continue
+            default:
+                continue
+            }
+        }
+    }
+
+    private func failProtocol(_ type: PGMessageType, context: String) async throws -> Never {
+        try? await drainUntilReady()
+        throw PGError(
+            code: "08P01",
+            message: "Unexpected message \(Self.describe(type)) during \(context)"
+        )
+    }
+
+    private static func describe(_ type: PGMessageType) -> String {
+        switch type {
+        case .bindComplete: "BindComplete"
+        case .parseComplete: "ParseComplete"
+        case .closeComplete: "CloseComplete"
+        case .portalSuspended: "PortalSuspended"
+        case .noData: "NoData"
+        case .parameterDescription: "ParameterDescription"
+        case .notificationResponse: "NotificationResponse"
+        case .parameterStatus: "ParameterStatus"
+        case .commandComplete: "CommandComplete"
+        case .readyForQuery: "ReadyForQuery"
+        case .rowDescription: "RowDescription"
+        case .dataRow: "DataRow"
+        case .errorResponse: "ErrorResponse"
+        case .noticeResponse: "NoticeResponse"
+        default: "0x\(String(type.rawValue, radix: 16)) (\(type.rawValue))"
+        }
+    }
+
+    private func beginQueryOperation() async {
+        while queryOperationBusy {
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                queryOperationWaiters.append(cont)
+            }
+        }
+        queryOperationBusy = true
+    }
+
+    private func endQueryOperation() {
+        queryOperationBusy = false
+        guard !queryOperationWaiters.isEmpty else { return }
+        let next = queryOperationWaiters.removeFirst()
+        next.resume()
+    }
+
+    private func resetQueryOperationGate() {
+        queryOperationBusy = false
+        let waiters = queryOperationWaiters
+        queryOperationWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
         }
     }
 
