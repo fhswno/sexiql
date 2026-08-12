@@ -16,6 +16,7 @@ public struct PGMessageType: RawRepresentable, Sendable, Equatable {
     public static let errorResponse = PGMessageType(rawValue: 0x45)       // 'E'
     public static let noticeResponse = PGMessageType(rawValue: 0x4E)      // 'N'
     public static let emptyQueryResponse = PGMessageType(rawValue: 0x49)  // 'I'
+    public static let notificationResponse = PGMessageType(rawValue: 0x41) // 'A'
     public static let passwordMessage = PGMessageType(rawValue: 0x70)     // 'p'
     public static let query = PGMessageType(rawValue: 0x51)               // 'Q'
     public static let terminate = PGMessageType(rawValue: 0x58)           // 'X'
