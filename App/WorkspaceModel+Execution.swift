@@ -295,6 +295,9 @@ extension WorkspaceModel {
                 }
                 state.duration = Date().timeIntervalSince(start)
                 recordHistory(statement.text, profileID: profileID)
+                if Self.statementChangesSchema(statement.text) {
+                    refreshSchema(for: profileID)
+                }
                 if state.status == .complete, !state.sqlColumns.isEmpty {
                     Task { await resolveEditable(for: state, profileID: profileID) }
                 }
@@ -317,6 +320,14 @@ extension WorkspaceModel {
                 return
             }
         }
+    }
+
+    static func statementChangesSchema(_ sql: String) -> Bool {
+        let head = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        for prefix in ["CREATE", "ALTER", "DROP", "RENAME"] {
+            if head.hasPrefix(prefix) { return true }
+        }
+        return false
     }
 
     func markRemainingCancelled(_ states: [StatementResult], after index: Int) {
