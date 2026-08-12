@@ -3,6 +3,8 @@ import AppKit
 public final class SQLEditorTextView: NSTextView {
     public var onRun: ((String) -> Void)?
     public var onSaveQuery: ((String) -> Void)?
+    public var completionCatalog: (() -> SQLCompletionCatalog)?
+    public var onNeedColumns: ((String) -> Void)?
 
     public let gutterView = LineNumberGutterView(frame: .zero)
 
@@ -11,8 +13,12 @@ public final class SQLEditorTextView: NSTextView {
     public var textVerticalInset: CGFloat = 10
 
     private var highlightWorkItem: DispatchWorkItem?
+    private var completionWorkItem: DispatchWorkItem?
     private var isApplyingHighlight = false
     private var gutterWidth: CGFloat = 28
+    private let completion = SQLCompletionWindow()
+    private var completionReplaceRange = NSRange(location: 0, length: 0)
+    private var suppressCompletion = false
 
     public init() {
         super.init(frame: .zero)
@@ -55,6 +61,9 @@ public final class SQLEditorTextView: NSTextView {
 
         gutterView.textView = self
         addSubview(gutterView)
+        completion.onAccept = { [weak self] item in
+            self?.insertCompletion(item)
+        }
     }
 
     public static let lineHeightPadding: CGFloat = 4
@@ -241,14 +250,55 @@ public final class SQLEditorTextView: NSTextView {
     public override func keyDown(with event: NSEvent) {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if flags == .command, event.charactersIgnoringModifiers == "\r" {
+            completion.hide()
             run()
             return
         }
         if flags == .command, event.charactersIgnoringModifiers == "/" {
+            completion.hide()
             toggleLineComment()
             return
         }
+        if flags == .control, event.charactersIgnoringModifiers == " " {
+            refreshCompletion(force: true)
+            return
+        }
+        if completion.isVisible {
+            switch event.keyCode {
+            case 125:
+                completion.moveSelection(1)
+                return
+            case 126:
+                completion.moveSelection(-1)
+                return
+            case 36, 48:
+                if completion.accept() { return }
+            case 53:
+                completion.hide()
+                return
+            default:
+                break
+            }
+        }
         super.keyDown(with: event)
+        scheduleCompletion()
+    }
+
+    public override func didChangeText() {
+        super.didChangeText()
+        scheduleCompletion()
+    }
+
+    public override func resignFirstResponder() -> Bool {
+        completion.hide()
+        return super.resignFirstResponder()
+    }
+
+    public override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil {
+            completion.hide()
+        }
+        super.viewWillMove(toWindow: newWindow)
     }
 
     public override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -258,6 +308,52 @@ public final class SQLEditorTextView: NSTextView {
             return true
         }
         return super.performKeyEquivalent(with: event)
+    }
+
+    private func scheduleCompletion() {
+        if suppressCompletion { return }
+        completionWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.refreshCompletion(force: false)
+        }
+        completionWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06, execute: work)
+    }
+
+    public func refreshCompletion(force: Bool) {
+        let catalog = completionCatalog?() ?? .keywordsOnly
+        let cursor = selectedRange().location
+        let result = SQLCompletionEngine().suggestions(
+            sql: string,
+            cursor: cursor,
+            catalog: catalog,
+            force: force
+        )
+        completionReplaceRange = result.replaceRange
+        if let qualifier = result.pendingQualifier {
+            onNeedColumns?(qualifier)
+        }
+        if result.items.isEmpty {
+            completion.hide()
+        } else {
+            completion.show(result.items, from: self)
+        }
+    }
+
+    private func insertCompletion(_ item: SQLCompletionItem) {
+        let range = completionReplaceRange
+        let end = (string as NSString).length
+        guard range.location >= 0, range.location + range.length <= end else { return }
+        suppressCompletion = true
+        if shouldChangeText(in: range, replacementString: item.insertText) {
+            replaceCharacters(in: range, with: item.insertText)
+            didChangeText()
+        }
+        suppressCompletion = false
+        let loc = range.location + (item.insertText as NSString).length
+        setSelectedRange(NSRange(location: loc, length: 0))
+        scheduleHighlight(delay: 0)
+        completion.hide()
     }
 
     public func run() {
