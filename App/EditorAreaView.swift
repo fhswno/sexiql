@@ -88,7 +88,7 @@ struct EditorAreaView: View {
                             }
                             .onDrop(
                                 of: [.text],
-                                delegate: TabReorderDropDelegate(
+                                delegate: ListReorderDropDelegate(
                                     targetID: tab.id,
                                     draggingID: { draggingTabID },
                                     setDraggingID: { draggingTabID = $0 },
@@ -105,7 +105,7 @@ struct EditorAreaView: View {
                         .contentShape(Rectangle())
                         .onDrop(
                             of: [.text],
-                            delegate: TabReorderDropDelegate(
+                            delegate: ListReorderDropDelegate(
                                 targetID: nil,
                                 draggingID: { draggingTabID },
                                 setDraggingID: { draggingTabID = $0 },
@@ -215,41 +215,5 @@ struct EditorAreaView: View {
     }
 }
 
-struct TabReorderDropDelegate: DropDelegate {
-    let targetID: UUID?
-    let draggingID: () -> UUID?
-    let setDraggingID: (UUID?) -> Void
-    let move: (UUID, UUID?) -> Void
 
-    func validateDrop(info: DropInfo) -> Bool {
-        draggingID() != nil || info.hasItemsConforming(to: [.text])
-    }
-
-    func dropEntered(info: DropInfo) {
-        guard let dragged = resolveDraggedID(info) else { return }
-        if let targetID, dragged == targetID { return }
-        move(dragged, targetID)
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        if let dragged = resolveDraggedID(info) {
-            if targetID == nil || dragged != targetID {
-                move(dragged, targetID)
-            }
-        }
-        setDraggingID(nil)
-        return true
-    }
-
-    func dropExited(info: DropInfo) {}
-
-    private func resolveDraggedID(_ info: DropInfo) -> UUID? {
-        if let id = draggingID() { return id }
-        return nil
-    }
-}
 
