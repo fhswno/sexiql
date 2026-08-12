@@ -78,6 +78,11 @@ struct SexiQLApp: App {
                 .keyboardShortcut("r", modifiers: [.command, .shift])
                 .disabled(model.selectedTabID == nil)
                 Divider()
+                Button("Copy Selected Rows") {
+                    model.copySelectedRowsHandler?()
+                }
+                .keyboardShortcut("c", modifiers: .command)
+                .disabled(!model.canCopySelectedRows)
                 Button("Undo Cell Edit") {
                     guard let tabID = model.selectedTabID else { return }
                     model.undoLastEdit(tabID: tabID, resultIndex: model.selectedResultIndex[tabID] ?? 0)
