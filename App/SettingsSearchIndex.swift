@@ -9,7 +9,7 @@ enum SettingsSearchIndex {
         return items.filter { $0.matches(trimmed) }
     }
 
-    // MARK: - Catalog by section
+    // MARK: - Catalog by Section
 
     private static let appearance: [SettingsSearchItem] = [
         item(
@@ -31,6 +31,13 @@ enum SettingsSearchIndex {
             title: "Compact result grid",
             subtitle: "Denser rows in query results",
             keywords: ["compact", "grid", "density", "rows", "results"],
+            section: .appearance
+        ),
+        item(
+            id: "copy-selected-rows",
+            title: "Copy selected rows as",
+            subtitle: "Default format for ⌘C and row Copy (TSV, CSV, or JSON)",
+            keywords: ["copy", "tsv", "csv", "json", "clipboard", "selected", "rows", "paste"],
             section: .appearance
         ),
     ]
