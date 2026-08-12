@@ -20,6 +20,7 @@ extension WorkspaceModel {
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         if resultsCollapsed { resultsCollapsed = false }
         explainingTabs.insert(tabID)
+        explainPlans[tabID] = nil
         explainErrors[tabID] = nil
         Task {
             defer { explainingTabs.remove(tabID) }
@@ -92,7 +93,16 @@ extension WorkspaceModel {
         let statements = SQLStatementSplitter().split(text)
         guard !statements.isEmpty else { return }
 
-        cancelRun(tabID, invokeDriverCancel: true)
+        explainPlans[tabID] = nil
+        explainErrors[tabID] = nil
+
+        let hadInFlight = runTasks[tabID] != nil || runningTabs.contains(tabID)
+        if hadInFlight {
+            runTasks[tabID]?.cancel()
+            runTasks[tabID] = nil
+            runningTabs.remove(tabID)
+            finalizeCancelledResults(tabID)
+        }
 
         if resultsCollapsed { resultsCollapsed = false }
 
@@ -112,6 +122,16 @@ extension WorkspaceModel {
                     self.busyProfileID = nil
                 }
             }
+            if hadInFlight {
+                if let connection = await self.connectionManager.connection(for: profileID) {
+                    await connection.cancelInFlight()
+                }
+                try? await self.connectionManager.disconnect(profileID)
+                if let profile = self.document.connections.first(where: { $0.id == profileID }) {
+                    self.connect(profile)
+                }
+            }
+            guard !Task.isCancelled else { return }
             await self.executeStatements(
                 resultStates,
                 statements: statements,
