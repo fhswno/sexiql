@@ -6,6 +6,8 @@ final class TabEditorHostView: NSView {
     var onTextChange: ((UUID, String) -> Void)?
     var onRun: ((UUID, String) -> Void)?
     var onSaveQuery: ((UUID, String) -> Void)?
+    var completionCatalog: (() -> SQLCompletionCatalog)?
+    var onNeedColumns: ((String) -> Void)?
 
     private(set) var selectTileCount: Int = 0
     private(set) var externalHighlightCount: Int = 0
@@ -138,11 +140,15 @@ final class TabEditorHostView: NSView {
     func setActionHandlers(
         onTextChange: @escaping (UUID, String) -> Void,
         onRun: @escaping (UUID, String) -> Void,
-        onSaveQuery: @escaping (UUID, String) -> Void
+        onSaveQuery: @escaping (UUID, String) -> Void,
+        completionCatalog: @escaping () -> SQLCompletionCatalog,
+        onNeedColumns: @escaping (String) -> Void
     ) {
         self.onTextChange = onTextChange
         self.onRun = onRun
         self.onSaveQuery = onSaveQuery
+        self.completionCatalog = completionCatalog
+        self.onNeedColumns = onNeedColumns
         for pane in panes.values {
             wireActions(for: pane)
         }
@@ -187,6 +193,12 @@ final class TabEditorHostView: NSView {
         tv.onSaveQuery = { [weak self] sql in
             self?.onSaveQuery?(id, sql)
         }
+        tv.completionCatalog = { [weak self] in
+            self?.completionCatalog?() ?? .keywordsOnly
+        }
+        tv.onNeedColumns = { [weak self] name in
+            self?.onNeedColumns?(name)
+        }
     }
 
     var activeTextView: SQLEditorTextView? {
@@ -229,6 +241,8 @@ struct TabEditorHostRepresentable: NSViewRepresentable {
     var onTextChange: (UUID, String) -> Void
     var onRun: (UUID, String) -> Void
     var onSaveQuery: (UUID, String) -> Void
+    var completionCatalog: () -> SQLCompletionCatalog
+    var onNeedColumns: (String) -> Void
     var onRegisterSQLProvider: ((TabEditorHostView) -> Void)?
 
     func makeCoordinator() -> Coordinator {
@@ -276,7 +290,9 @@ struct TabEditorHostRepresentable: NSViewRepresentable {
             host.setActionHandlers(
                 onTextChange: parent.onTextChange,
                 onRun: parent.onRun,
-                onSaveQuery: parent.onSaveQuery
+                onSaveQuery: parent.onSaveQuery,
+                completionCatalog: parent.completionCatalog,
+                onNeedColumns: parent.onNeedColumns
             )
             parent.onRegisterSQLProvider?(host)
         }
