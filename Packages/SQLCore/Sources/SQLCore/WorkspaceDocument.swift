@@ -95,6 +95,22 @@ public struct LayoutState: Codable, Sendable, Equatable {
     }
 }
 
+public enum CopySelectedRowsFormat: String, Codable, Sendable, CaseIterable, Identifiable {
+    case tsv
+    case csv
+    case json
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .tsv: "TSV"
+        case .csv: "CSV"
+        case .json: "JSON"
+        }
+    }
+}
+
 public enum AppearanceMode: String, Codable, Sendable, CaseIterable, Identifiable {
     case system
     case light
@@ -127,6 +143,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
     public var layout: LayoutState
     public var compactGrid: Bool
     public var appearance: AppearanceMode
+    public var copySelectedRowsFormat: CopySelectedRowsFormat
     public var aiEnabled: Bool
     public var ollamaBaseURL: String
     public var ollamaModel: String
@@ -138,6 +155,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
         layout: LayoutState = LayoutState(),
         compactGrid: Bool = false,
         appearance: AppearanceMode = .system,
+        copySelectedRowsFormat: CopySelectedRowsFormat = .tsv,
         aiEnabled: Bool = false,
         ollamaBaseURL: String = "http://127.0.0.1:11434",
         ollamaModel: String = ""
@@ -148,6 +166,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
         self.layout = layout
         self.compactGrid = compactGrid
         self.appearance = appearance
+        self.copySelectedRowsFormat = copySelectedRowsFormat
         self.aiEnabled = aiEnabled
         self.ollamaBaseURL = ollamaBaseURL
         self.ollamaModel = ollamaModel
@@ -155,6 +174,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case tintName, autoRestoreWorkspace, confirmBeforeDisconnect, layout, compactGrid, appearance
+        case copySelectedRowsFormat
         case aiEnabled, ollamaBaseURL, ollamaModel
     }
 
@@ -166,6 +186,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
         layout = try container.decodeIfPresent(LayoutState.self, forKey: .layout) ?? LayoutState()
         compactGrid = try container.decodeIfPresent(Bool.self, forKey: .compactGrid) ?? false
         appearance = try container.decodeIfPresent(AppearanceMode.self, forKey: .appearance) ?? .system
+        copySelectedRowsFormat = try container.decodeIfPresent(CopySelectedRowsFormat.self, forKey: .copySelectedRowsFormat) ?? .tsv
         aiEnabled = try container.decodeIfPresent(Bool.self, forKey: .aiEnabled) ?? false
         ollamaBaseURL = try container.decodeIfPresent(String.self, forKey: .ollamaBaseURL) ?? "http://127.0.0.1:11434"
         ollamaModel = try container.decodeIfPresent(String.self, forKey: .ollamaModel) ?? ""
@@ -179,6 +200,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
         try container.encode(layout, forKey: .layout)
         try container.encode(compactGrid, forKey: .compactGrid)
         try container.encode(appearance, forKey: .appearance)
+        try container.encode(copySelectedRowsFormat, forKey: .copySelectedRowsFormat)
         try container.encode(aiEnabled, forKey: .aiEnabled)
         try container.encode(ollamaBaseURL, forKey: .ollamaBaseURL)
         try container.encode(ollamaModel, forKey: .ollamaModel)
