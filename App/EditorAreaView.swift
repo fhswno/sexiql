@@ -55,12 +55,21 @@ struct EditorAreaView: View {
                         let suggested = model.document.openTabs.first(where: { $0.id == id })?.title
                         model.beginSaveQuery(sql: sql, suggestedName: suggested)
                     },
+                    completionCatalog: {
+                        model.completionCatalog()
+                    },
+                    onNeedColumns: { name in
+                        model.ensureCompletionColumns(named: name)
+                    },
                     onRegisterSQLProvider: { host in
                         model.activeSQLProvider = { [weak host] in
                             host?.activeTextView?.activeSQLSnippet()
                         }
                         model.activeEditorInsert = { [weak host] tabID, text in
                             host?.insertText(text, tabID: tabID) ?? false
+                        }
+                        model.refreshEditorCompletion = { [weak host] in
+                            host?.activeTextView?.refreshCompletion(force: false)
                         }
                     }
                 )
@@ -149,7 +158,7 @@ struct EditorAreaView: View {
                     }
             } else {
                 Button {
-                    model.selectedTabID = tab.id
+                    model.selectEditorTab(tab.id)
                 } label: {
                     Text(tab.title)
                         .font(SexiQLType.rowTitle)
@@ -194,7 +203,7 @@ struct EditorAreaView: View {
 
     private func beginRename(_ tabID: UUID) {
         guard let tab = model.document.openTabs.first(where: { $0.id == tabID }) else { return }
-        model.selectedTabID = tabID
+        model.selectEditorTab(tabID)
         renameDraft = tab.title
         renamingTabID = tabID
         DispatchQueue.main.async {
