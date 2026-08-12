@@ -36,8 +36,10 @@ extension WorkspaceModel {
         selectedResultIndex[tabID] = nil
         explainPlans[tabID] = nil
         explainErrors[tabID] = nil
-        if selectedTabID == tabID {
-            selectedTabID = document.openTabs.last?.id
+        if selectedTabID == tabID, let next = document.openTabs.last?.id {
+            selectEditorTab(next)
+        } else if selectedTabID == tabID {
+            selectedTabID = nil
         }
         saveWorkspace()
     }
