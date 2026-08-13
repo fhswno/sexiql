@@ -44,15 +44,28 @@ public struct SQLCompletionColumn: Sendable, Equatable {
 
 public struct SQLCompletionObject: Sendable, Equatable {
     public var name: String
+    public var schema: String?
     public var insertText: String
     public var kind: SQLCompletionKind
     public var columns: [SQLCompletionColumn]
 
-    public init(name: String, insertText: String, kind: SQLCompletionKind, columns: [SQLCompletionColumn] = []) {
+    public init(
+        name: String,
+        insertText: String,
+        kind: SQLCompletionKind,
+        columns: [SQLCompletionColumn] = [],
+        schema: String? = nil
+    ) {
         self.name = name
+        self.schema = schema
         self.insertText = insertText
         self.kind = kind
         self.columns = columns
+    }
+
+    public var qualifiedName: String {
+        if let schema, !schema.isEmpty { return "\(schema).\(name)" }
+        return name
     }
 }
 
@@ -219,16 +232,24 @@ public struct SQLCompletionEngine: Sendable {
         let insertTable = prefixInfo.qualifier == nil
             ? insertColumnListTable(tokens: tokens, before: prefixInfo.replaceRange.location)
             : nil
-        let qualifier = prefixInfo.qualifier ?? insertTable
+        let inRelation = isRelationContext(tokens: tokens, before: prefixInfo.replaceRange.location)
         let context: SQLCompletionContext
-        if let qualifier {
-            context = .column(qualifier: qualifier)
-        } else if isRelationContext(tokens: tokens, before: prefixInfo.replaceRange.location) {
+        let qualifier: String?
+        if let insertTable {
+            context = .column(qualifier: insertTable)
+            qualifier = insertTable
+        } else if let q = prefixInfo.qualifier, !inRelation {
+            context = .column(qualifier: q)
+            qualifier = q
+        } else if inRelation {
             context = .relation
+            qualifier = prefixInfo.qualifier
         } else if isColumnValueContext(tokens: tokens, before: prefixInfo.replaceRange.location) {
             context = .columnValue
+            qualifier = prefixInfo.qualifier
         } else {
             context = .general
+            qualifier = prefixInfo.qualifier
         }
         return Query(
             prefix: prefixInfo.prefix,
@@ -509,10 +530,42 @@ public struct SQLCompletionEngine: Sendable {
                 }
             }
         case .relation:
-            for object in catalog.objects {
-                if let rank = matchRank(label: object.name, prefix: needle, force: force) {
+            let schemaFilter = query.qualifier
+            let knownSchema = schemaFilter.map { qualifier in
+                catalog.objects.contains {
+                    ($0.schema ?? "").caseInsensitiveCompare(qualifier) == .orderedSame
+                }
+            } ?? false
+            if let schemaFilter, knownSchema {
+                for object in catalog.objects {
+                    guard let schema = object.schema,
+                          schema.caseInsensitiveCompare(schemaFilter) == .orderedSame else { continue }
+                    if let rank = matchRank(
+                        label: object.name,
+                        prefix: needle,
+                        force: force || true
+                    ) {
+                        scored.append((
+                            SQLCompletionItem(
+                                kind: object.kind,
+                                label: object.qualifiedName,
+                                insertText: object.name
+                            ),
+                            rank
+                        ))
+                    }
+                }
+            } else {
+                for object in catalog.objects {
+                    let rank = matchRank(label: object.name, prefix: needle, force: force)
+                        ?? matchRank(label: object.qualifiedName, prefix: needle, force: force)
+                    guard let rank else { continue }
                     scored.append((
-                        SQLCompletionItem(kind: object.kind, label: object.name, insertText: object.insertText),
+                        SQLCompletionItem(
+                            kind: object.kind,
+                            label: object.qualifiedName,
+                            insertText: object.insertText
+                        ),
                         rank
                     ))
                 }
