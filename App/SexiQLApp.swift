@@ -48,6 +48,10 @@ struct SexiQLApp: App {
                 }
                 .keyboardShortcut("e", modifiers: .command)
                 .disabled(model.selectedTabID == nil)
+                Button("Find…") {
+                    model.showFindInEditor?()
+                }
+                .disabled(model.selectedTabID == nil)
                 Button("Format") {
                     model.formatActiveEditor?()
                 }
