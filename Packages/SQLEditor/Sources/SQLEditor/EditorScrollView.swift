@@ -20,6 +20,7 @@ public final class EditorScrollView: NSScrollView {
         automaticallyAdjustsContentInsets = false
         contentInsets = .init()
         scrollerInsets = .init()
+        findBarPosition = .aboveContent
 
         editorTextView.minSize = .zero
         editorTextView.maxSize = NSSize(
@@ -53,6 +54,11 @@ public final class EditorScrollView: NSScrollView {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+
+    public override func tile() {
+        super.tile()
+        tileDocument()
     }
 
     public override func layout() {
