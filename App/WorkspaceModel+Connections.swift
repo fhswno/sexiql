@@ -56,8 +56,21 @@ extension WorkspaceModel {
         return nil
     }
 
+    func reconnectQuietly(_ profile: ConnectionProfile) {
+        guard connectTasks[profile.id] == nil else { return }
+        switch status(for: profile.id) {
+        case .connected, .connecting: return
+        default: break
+        }
+        startConnect(profile, select: false)
+    }
+
     func connect(_ profile: ConnectionProfile) {
         selectConnection(profile)
+        startConnect(profile, select: true)
+    }
+
+    private func startConnect(_ profile: ConnectionProfile, select: Bool) {
         guard connectTasks[profile.id] == nil else { return }
         connectionStatuses[profile.id] = .connecting
         lastConnectionErrors[profile.id] = nil
@@ -71,10 +84,13 @@ extension WorkspaceModel {
                     self.connectionStatuses[profile.id] = .connected
                     self.lastConnectionErrors[profile.id] = nil
                     self.connectTasks[profile.id] = nil
-                    self.bindActiveTab(to: profile.id)
+                    if select {
+                        self.bindActiveTab(to: profile.id)
+                    }
                     if self.selectedConnectionID == nil {
                         self.selectedConnectionID = profile.id
                     }
+                    self.persistSessionToDisk()
                 }
                 let shouldLoad = await MainActor.run { self.selectedConnectionID == profile.id }
                 if shouldLoad {
@@ -100,6 +116,29 @@ extension WorkspaceModel {
         }
     }
 
+    func requestDisconnect(_ profile: ConnectionProfile) {
+        let live: Bool
+        switch status(for: profile.id) {
+        case .connected, .connecting: live = true
+        default: live = false
+        }
+        if document.settings.confirmBeforeDisconnect, live {
+            pendingDisconnect = profile
+        } else {
+            disconnect(profile)
+        }
+    }
+
+    func confirmPendingDisconnect() {
+        guard let profile = pendingDisconnect else { return }
+        pendingDisconnect = nil
+        disconnect(profile)
+    }
+
+    func cancelPendingDisconnect() {
+        pendingDisconnect = nil
+    }
+
     func disconnect(_ profile: ConnectionProfile) {
         Task {
             try? await connectionManager.disconnect(profile.id)
@@ -111,6 +150,7 @@ extension WorkspaceModel {
             if selectedConnectionID == profile.id {
                 schemaTables = []
             }
+            persistSessionToDisk()
         }
     }
 
