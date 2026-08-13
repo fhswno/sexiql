@@ -13,6 +13,9 @@ struct SexiQLApp: App {
                 .environment(model)
                 .frame(minWidth: 1040, minHeight: 640)
                 .preferredColorScheme(preferredScheme)
+                .onAppear {
+                    AppDelegate.shared?.workspace = model
+                }
                 .onDisappear {
                     model.saveWorkspace()
                 }
