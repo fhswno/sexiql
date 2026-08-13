@@ -345,6 +345,11 @@ struct ResultsPaneView: View {
                     Text(String(format: "%.3fs", duration))
                 }
 
+                if let limit = result.appliedLimit {
+                    statusDot()
+                    Text("limited to \(limit)")
+                }
+
                 Spacer(minLength: SexiQLSpace.md)
 
                 if let message = result.message, !message.isEmpty {
