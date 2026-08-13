@@ -71,6 +71,9 @@ struct EditorAreaView: View {
                         model.refreshEditorCompletion = { [weak host] in
                             host?.activeTextView?.refreshCompletion(force: false)
                         }
+                        model.formatActiveEditor = { [weak host] in
+                            host?.activeTextView?.formatActiveSnippet()
+                        }
                     }
                 )
                 .frame(minHeight: SexiQLLayout.editorMinHeight)
