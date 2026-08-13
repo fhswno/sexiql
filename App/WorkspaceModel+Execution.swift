@@ -235,9 +235,13 @@ extension WorkspaceModel {
                     state.message = "Not connected"
                     return
                 }
+                let guarded = SQLLimitGuard().apply(statement.text)
+                if guarded.didLimit {
+                    state.appliedLimit = SQLLimitGuard.defaultLimit
+                }
                 if SQLStreamability.isStreamable(statement.text) {
                     state.status = .streaming
-                    let streamed = try await connection.stream(statement.text)
+                    let streamed = try await connection.stream(guarded.sql)
                     state.sqlColumns = streamed.columns
                     state.model = ResultSetModel(columns: streamed.columns.map {
                         GridColumn(ordinal: $0.ordinal, name: $0.name, dataType: $0.dataType)
@@ -272,7 +276,7 @@ extension WorkspaceModel {
                     }
                 } else {
                     state.status = .running
-                    let result = try await connection.execute(statement.text)
+                    let result = try await connection.execute(guarded.sql)
                     if Task.isCancelled {
                         state.status = .cancelled
                         state.message = "Cancelled"
