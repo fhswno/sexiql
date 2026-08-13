@@ -4,6 +4,7 @@ import SQLUI
 
 struct ContentView: View {
     @Environment(WorkspaceModel.self) private var model
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HSplitView {
@@ -56,6 +57,7 @@ struct ContentView: View {
         }
         .onAppear {
             AppIconAppearance.apply(for: model.appearance)
+            model.restoreLiveConnectionsIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .sexiqlSystemAppearanceDidChange)) { _ in
             if model.appearance == .system {
@@ -65,6 +67,28 @@ struct ContentView: View {
         .onChange(of: model.appearance) { _, mode in
             AppIconAppearance.apply(for: mode)
         }
+        .tint(SexiQLColors.chromeTint(model.document.settings.tintName, scheme: colorScheme))
+        .confirmationDialog(
+            "Disconnect \(model.pendingDisconnect?.name ?? "this connection")?",
+            isPresented: pendingDisconnectBinding,
+            titleVisibility: .visible
+        ) {
+            Button("Disconnect", role: .destructive) {
+                model.confirmPendingDisconnect()
+            }
+            Button("Cancel", role: .cancel) {
+                model.cancelPendingDisconnect()
+            }
+        } message: {
+            Text("The live connection will be closed.")
+        }
+    }
+
+    private var pendingDisconnectBinding: Binding<Bool> {
+        Binding(
+            get: { model.pendingDisconnect != nil },
+            set: { if !$0 { model.cancelPendingDisconnect() } }
+        )
     }
 
     private var errorBinding: Binding<Bool> {
