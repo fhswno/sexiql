@@ -48,6 +48,11 @@ struct SexiQLApp: App {
                 }
                 .keyboardShortcut("e", modifiers: .command)
                 .disabled(model.selectedTabID == nil)
+                Button("Format") {
+                    model.formatActiveEditor?()
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .disabled(model.selectedTabID == nil)
                 Button("Explain with AI") {
                     if let tabID = model.selectedTabID {
                         model.explainWithAI(tabID)
