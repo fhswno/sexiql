@@ -68,6 +68,41 @@ final class SQLCompletionTests: XCTestCase {
         XCTAssertEqual(result.items.first?.kind, .column)
     }
 
+    func testSchemaQualifiedTableAfterDot() {
+        let clients = SQLCompletionObject(
+            name: "clients",
+            insertText: "momentum.clients",
+            kind: .table,
+            schema: "momentum"
+        )
+        let sql = "SELECT * FROM momentum.cli"
+        let result = engine.suggestions(
+            sql: sql,
+            cursor: sql.utf16.count,
+            catalog: SQLCompletionCatalog(objects: [clients]),
+            force: false
+        )
+        XCTAssertEqual(result.items.first?.label, "momentum.clients")
+        XCTAssertEqual(result.items.first?.insertText, "clients")
+    }
+
+    func testUnqualifiedPrefixSuggestsQualifiedTable() {
+        let clients = SQLCompletionObject(
+            name: "clients",
+            insertText: "momentum.clients",
+            kind: .table,
+            schema: "momentum"
+        )
+        let sql = "SELECT * FROM mom"
+        let result = engine.suggestions(
+            sql: sql,
+            cursor: sql.utf16.count,
+            catalog: SQLCompletionCatalog(objects: [clients]),
+            force: false
+        )
+        XCTAssertEqual(result.items.first?.insertText, "momentum.clients")
+    }
+
     func testFromPrefersTables() {
         let sql = "SELECT * FROM acc"
         let result = engine.suggestions(sql: sql, cursor: sql.utf16.count, catalog: catalog(), force: false)
