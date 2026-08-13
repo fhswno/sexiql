@@ -35,6 +35,7 @@ final class WorkspaceModel {
     var isSchemaLoading = false
     var schemaPrefetchTask: Task<Void, Never>?
     var refreshEditorCompletion: (() -> Void)?
+    var formatActiveEditor: (() -> Void)?
 
     var runningTabs: Set<UUID> = []
     var runTasks: [UUID: Task<Void, Never>] = [:]
