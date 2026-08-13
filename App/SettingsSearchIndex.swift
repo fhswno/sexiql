@@ -21,9 +21,9 @@ enum SettingsSearchIndex {
         ),
         item(
             id: "tint",
-            title: "Chrome tint",
-            subtitle: "Accent color for window chrome",
-            keywords: ["tint", "accent", "chrome", "color", "indigo", "teal", "pink", "orange"],
+            title: "Accent Color",
+            subtitle: "Blue, orange, green, purple, or system",
+            keywords: ["tint", "accent", "chrome", "color", "blue", "orange", "green", "purple"],
             section: .appearance
         ),
         item(
