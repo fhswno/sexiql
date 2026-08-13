@@ -12,6 +12,17 @@ public enum SexiQLColors {
     public static let hairline = Color.primary.opacity(0.08)
     public static let glassStroke = Color.white.opacity(0.08)
 
+    public static func chromeTint(_ name: String?, scheme: ColorScheme) -> Color {
+        switch name {
+        case "blue", "indigo": .blue
+        case "orange": .orange
+        case "green", "teal": .green
+        case "purple", "pink": .purple
+        default:
+            scheme == .dark ? .white : Color(white: 0.22)
+        }
+    }
+
     public static func engine(_ kind: String) -> Color {
         switch kind.lowercased() {
         case "postgres", "postgresql": return Color(red: 0.33, green: 0.47, blue: 0.75)
