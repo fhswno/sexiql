@@ -37,6 +37,7 @@ public final class SQLCompletionWindow: NSObject, NSTableViewDataSource, NSTable
         tableView.allowsMultipleSelection = false
         tableView.backgroundColor = .controlBackgroundColor
         tableView.style = .plain
+        tableView.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         tableView.dataSource = self
         tableView.delegate = self
         tableView.doubleAction = #selector(doubleClick)
@@ -44,6 +45,7 @@ public final class SQLCompletionWindow: NSObject, NSTableViewDataSource, NSTable
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("item"))
         column.resizingMask = .autoresizingMask
+        column.minWidth = 80
         tableView.addTableColumn(column)
         scroll.documentView = tableView
         panel.contentView = scroll
@@ -72,7 +74,7 @@ public final class SQLCompletionWindow: NSObject, NSTableViewDataSource, NSTable
         let rect = textView.firstRect(forCharacterRange: caret, actualRange: nil)
         let count = min(items.count, 8)
         let height = CGFloat(count) * tableView.rowHeight + 6
-        let width: CGFloat = 300
+        let width = preferredWidth(for: items)
         var frame = NSRect(x: rect.minX, y: rect.minY - height - 4, width: width, height: height)
         if let screen = window.screen ?? NSScreen.main {
             if frame.minY < screen.visibleFrame.minY {
@@ -83,6 +85,10 @@ public final class SQLCompletionWindow: NSObject, NSTableViewDataSource, NSTable
             }
         }
         panel.setFrame(frame, display: true)
+        if let column = tableView.tableColumns.first {
+            column.width = max(80, width - 4)
+        }
+        tableView.sizeLastColumnToFit()
         if panel.parent !== window {
             window.addChildWindow(panel, ordered: .above)
         }
@@ -124,9 +130,24 @@ public final class SQLCompletionWindow: NSObject, NSTableViewDataSource, NSTable
         let id = NSUserInterfaceItemIdentifier("cell")
         let cell = tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView
             ?? makeCell(id)
-        cell.textField?.stringValue = item.detail.map { "\(item.label)  \($0)" } ?? item.label
+        cell.textField?.stringValue = displayText(item)
         cell.imageView?.image = NSImage(systemSymbolName: symbol(item.kind), accessibilityDescription: nil)
         return cell
+    }
+
+    private func displayText(_ item: SQLCompletionItem) -> String {
+        item.detail.map { "\(item.label)  \($0)" } ?? item.label
+    }
+
+    private func preferredWidth(for items: [SQLCompletionItem]) -> CGFloat {
+        let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        var maxText: CGFloat = 0
+        for item in items {
+            let text = displayText(item) as NSString
+            maxText = max(maxText, text.size(withAttributes: [.font: font]).width)
+        }
+        let chrome: CGFloat = 8 + 14 + 6 + 16
+        return min(520, max(240, ceil(maxText) + chrome))
     }
 
     private func makeCell(_ id: NSUserInterfaceItemIdentifier) -> NSTableCellView {
@@ -140,6 +161,8 @@ public final class SQLCompletionWindow: NSObject, NSTableViewDataSource, NSTable
         text.translatesAutoresizingMaskIntoConstraints = false
         text.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         text.lineBreakMode = .byTruncatingTail
+        text.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        text.setContentHuggingPriority(.defaultLow, for: .horizontal)
         cell.addSubview(image)
         cell.addSubview(text)
         cell.imageView = image
