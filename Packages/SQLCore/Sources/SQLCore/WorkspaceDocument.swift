@@ -303,6 +303,8 @@ public struct WorkspaceDocument: Codable, Sendable, Equatable {
     public var connections: [ConnectionProfile]
     public var openTabs: [EditorTabState]
     public var selectedTabID: UUID?
+    public var selectedConnectionID: UUID?
+    public var reconnectProfileIDs: [UUID]
     public var settings: UserSettings
     public var history: [QueryHistoryEntry]
     public var savedQueries: [SavedQuery]
@@ -312,6 +314,8 @@ public struct WorkspaceDocument: Codable, Sendable, Equatable {
         connections: [ConnectionProfile] = [],
         openTabs: [EditorTabState] = [],
         selectedTabID: UUID? = nil,
+        selectedConnectionID: UUID? = nil,
+        reconnectProfileIDs: [UUID] = [],
         settings: UserSettings = UserSettings(),
         history: [QueryHistoryEntry] = [],
         savedQueries: [SavedQuery] = []
@@ -320,13 +324,16 @@ public struct WorkspaceDocument: Codable, Sendable, Equatable {
         self.connections = connections
         self.openTabs = openTabs
         self.selectedTabID = selectedTabID
+        self.selectedConnectionID = selectedConnectionID
+        self.reconnectProfileIDs = reconnectProfileIDs
         self.settings = settings
         self.history = history
         self.savedQueries = savedQueries
     }
 
     private enum CodingKeys: String, CodingKey {
-        case version, connections, openTabs, selectedTabID, settings, history, savedQueries
+        case version, connections, openTabs, selectedTabID, selectedConnectionID, reconnectProfileIDs
+        case settings, history, savedQueries
     }
 
     public init(from decoder: Decoder) throws {
@@ -335,6 +342,8 @@ public struct WorkspaceDocument: Codable, Sendable, Equatable {
         connections = try container.decodeIfPresent([ConnectionProfile].self, forKey: .connections) ?? []
         openTabs = try container.decodeIfPresent([EditorTabState].self, forKey: .openTabs) ?? []
         selectedTabID = try container.decodeIfPresent(UUID.self, forKey: .selectedTabID)
+        selectedConnectionID = try container.decodeIfPresent(UUID.self, forKey: .selectedConnectionID)
+        reconnectProfileIDs = try container.decodeIfPresent([UUID].self, forKey: .reconnectProfileIDs) ?? []
         settings = try container.decodeIfPresent(UserSettings.self, forKey: .settings) ?? UserSettings()
         history = try container.decodeIfPresent([QueryHistoryEntry].self, forKey: .history) ?? []
         savedQueries = try container.decodeIfPresent([SavedQuery].self, forKey: .savedQueries) ?? []
@@ -345,7 +354,9 @@ public struct WorkspaceDocument: Codable, Sendable, Equatable {
         try container.encode(version, forKey: .version)
         try container.encode(connections, forKey: .connections)
         try container.encode(openTabs, forKey: .openTabs)
-        try container.encode(selectedTabID, forKey: .selectedTabID)
+        try container.encodeIfPresent(selectedTabID, forKey: .selectedTabID)
+        try container.encodeIfPresent(selectedConnectionID, forKey: .selectedConnectionID)
+        try container.encode(reconnectProfileIDs, forKey: .reconnectProfileIDs)
         try container.encode(settings, forKey: .settings)
         try container.encode(history, forKey: .history)
         try container.encode(savedQueries, forKey: .savedQueries)
