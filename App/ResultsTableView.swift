@@ -32,8 +32,8 @@ struct ResultsTableView: View {
     @State private var lastClickColumn: Int?
     @State private var lastClickAt: Date = .distantPast
 
-    private let rowHeight: CGFloat = 28
-    private let headerHeight: CGFloat = 32
+    private var rowHeight: CGFloat { workspace.document.settings.compactGrid ? 22 : 28 }
+    private var headerHeight: CGFloat { workspace.document.settings.compactGrid ? 26 : 32 }
     private let indexWidth: CGFloat = 48
     private let hPad: CGFloat = 10
     private let resizeHandleWidth: CGFloat = 8
