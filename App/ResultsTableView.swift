@@ -28,6 +28,9 @@ struct ResultsTableView: View {
     @State private var hoveringResizeOrdinal: Int?
     @State private var hoveringIndexID: Int?
     @State private var rubberBand: CGRect?
+    @State private var lastClickID: Int?
+    @State private var lastClickColumn: Int?
+    @State private var lastClickAt: Date = .distantPast
 
     private let rowHeight: CGFloat = 28
     private let headerHeight: CGFloat = 32
@@ -69,7 +72,7 @@ struct ResultsTableView: View {
         GeometryReader { geo in
             tableScroll(geo: geo)
                 .background(Color(nsColor: .textBackgroundColor))
-                .background { copyFocusSink }
+                .background(alignment: .topLeading) { copyFocusSink }
                 .onReceive(NotificationCenter.default.publisher(for: .sexiqlCopySelectedRows)) { _ in
                     copySelected(format: workspace.copySelectedRowsFormat)
                 }
@@ -115,6 +118,7 @@ struct ResultsTableView: View {
         Color.clear
             .frame(width: 1, height: 1)
             .focusable()
+            .focusEffectDisabled()
             .focused($tableFocused)
             .onCopyCommand {
                 copyCommandProviders(format: workspace.copySelectedRowsFormat)
@@ -167,15 +171,23 @@ struct ResultsTableView: View {
         contentW: CGFloat,
         fill: CGFloat
     ) -> some View {
-        VStack(spacing: 0) {
+        let stack = Group {
             ForEach(rows) { row in
                 dataRow(row, widths: widths, totalWidth: contentW, displayIDs: displayIDs)
+                    .frame(height: rowHeight)
             }
             if fill > 0 {
                 Color(nsColor: .textBackgroundColor)
                     .frame(width: contentW, height: fill)
                     .contentShape(Rectangle())
                     .onTapGesture { clearSelection() }
+            }
+        }
+        return Group {
+            if rows.count < 200 {
+                VStack(spacing: 0) { stack }
+            } else {
+                LazyVStack(spacing: 0) { stack }
             }
         }
         .coordinateSpace(name: "resultRows")
@@ -329,7 +341,7 @@ struct ResultsTableView: View {
     ) -> some View {
         let isSelected = selection.selectedIDs.contains(row.id)
         return HStack(spacing: 0) {
-            indexGutter(row, isSelected: isSelected)
+            indexGutter(row, isSelected: isSelected, displayIDs: displayIDs)
 
             ForEach(Array(model.columns.enumerated()), id: \.element.id) { index, column in
                 let w = index < widths.count ? widths[index] : 120
@@ -361,11 +373,9 @@ struct ResultsTableView: View {
                 .padding(.horizontal, isEditing ? 4 : hPad)
                 .frame(width: w, height: rowHeight, alignment: .leading)
                 .contentShape(Rectangle())
-                .simultaneousGesture(
-                    TapGesture(count: 2).onEnded {
-                        if isEditable, !isEditing {
-                            beginEdit(row: row.id, column: column.ordinal)
-                        }
+                .highPriorityGesture(
+                    TapGesture().onEnded {
+                        handleRowClick(row.id, column: column.ordinal, displayIDs: displayIDs)
                     }
                 )
                 .contextMenu {
@@ -402,9 +412,6 @@ struct ResultsTableView: View {
                 .frame(height: 1)
         }
         .contentShape(Rectangle())
-        .onTapGesture {
-            handleRowClick(row.id, displayIDs: displayIDs)
-        }
         .contextMenu {
             Button("Copy") { copyFromMenu(rowID: row.id) }
             Button("Copy as CSV") { copyFromMenu(rowID: row.id, format: .csv) }
@@ -415,7 +422,8 @@ struct ResultsTableView: View {
 
     private func indexGutter(
         _ row: ResultTableRow,
-        isSelected: Bool
+        isSelected: Bool,
+        displayIDs: [Int]
     ) -> some View {
         Text("\(row.number)")
             .font(.system(size: 11, design: .monospaced))
@@ -434,6 +442,11 @@ struct ResultsTableView: View {
             .onHover { hovering in
                 hoveringIndexID = hovering ? row.id : (hoveringIndexID == row.id ? nil : hoveringIndexID)
             }
+            .highPriorityGesture(
+                TapGesture().onEnded {
+                    handleRowClick(row.id, displayIDs: displayIDs)
+                }
+            )
     }
 
     @ViewBuilder
@@ -472,28 +485,41 @@ struct ResultsTableView: View {
     // MARK: - Selection / copy
 
     private func apply(_ next: ResultRowSelection, focus: Bool = true) {
-        selection = next
+        if selection != next {
+            selection = next
+        }
         if selectedIDs != next.selectedIDs {
             selectedIDs = next.selectedIDs
         }
-        if focus {
+        if focus, !tableFocused {
             tableFocused = true
         }
         refreshCopyHandler()
     }
 
     private func refreshCopyHandler() {
-        if selection.isEmpty || editing != nil {
-            workspace.copySelectedRowsHandler = nil
-        } else {
+        let canCopy = !selection.isEmpty && editing == nil
+        let hasHandler = workspace.copySelectedRowsHandler != nil
+        guard canCopy != hasHandler else { return }
+        if canCopy {
             workspace.copySelectedRowsHandler = {
                 NotificationCenter.default.post(name: .sexiqlCopySelectedRows, object: nil)
             }
+        } else {
+            workspace.copySelectedRowsHandler = nil
         }
     }
 
-    private func handleRowClick(_ id: Int, displayIDs: [Int]) {
+    private func handleRowClick(_ id: Int, column: Int? = nil, displayIDs: [Int]) {
         if editing != nil { commitEdit() }
+        let now = Date()
+        let isDouble = lastClickID == id
+            && lastClickColumn == column
+            && now.timeIntervalSince(lastClickAt) < 0.35
+        lastClickID = id
+        lastClickColumn = column
+        lastClickAt = now
+
         let flags = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
         apply(
             ResultRowSelection.click(
@@ -504,6 +530,9 @@ struct ResultsTableView: View {
                 displayIDs: displayIDs
             )
         )
+        if isDouble, isEditable, let column, flags.isEmpty {
+            beginEdit(row: id, column: column)
+        }
     }
 
     private func clearSelection() {
