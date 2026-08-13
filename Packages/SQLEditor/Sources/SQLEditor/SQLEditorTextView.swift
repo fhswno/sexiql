@@ -147,6 +147,9 @@ public final class SQLEditorTextView: NSTextView {
         let saveItem = NSMenuItem(title: "Save Query…", action: #selector(contextSaveQuery(_:)), keyEquivalent: "")
         saveItem.target = self
         menu.addItem(saveItem)
+        let formatItem = NSMenuItem(title: "Format", action: #selector(contextFormat(_:)), keyEquivalent: "")
+        formatItem.target = self
+        menu.addItem(formatItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Cut", action: #selector(cut(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "Copy", action: #selector(copy(_:)), keyEquivalent: "")
@@ -158,6 +161,10 @@ public final class SQLEditorTextView: NSTextView {
 
     @objc private func contextRun(_ sender: Any?) {
         run()
+    }
+
+    @objc private func contextFormat(_ sender: Any?) {
+        formatActiveSnippet()
     }
 
     @objc private func contextSaveQuery(_ sender: Any?) {
@@ -307,6 +314,10 @@ public final class SQLEditorTextView: NSTextView {
             toggleLineComment()
             return true
         }
+        if flags == [.command, .shift], event.charactersIgnoringModifiers?.lowercased() == "f" {
+            formatActiveSnippet()
+            return true
+        }
         return super.performKeyEquivalent(with: event)
     }
 
@@ -354,6 +365,36 @@ public final class SQLEditorTextView: NSTextView {
         setSelectedRange(NSRange(location: loc, length: 0))
         scheduleHighlight(delay: 0)
         completion.hide()
+    }
+
+    public func formatActiveSnippet() {
+        completion.hide()
+        let sel = selectedRange()
+        let full = string as NSString
+        let range: NSRange
+        if sel.length > 0, sel.location != NSNotFound,
+           sel.location >= 0, sel.location + sel.length <= full.length,
+           !full.substring(with: sel).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            range = sel
+        } else {
+            range = NSRange(location: 0, length: full.length)
+        }
+        let source = full.substring(with: range)
+        let formatted = SQLFormatter().format(source)
+        guard formatted != source else { return }
+        suppressCompletion = true
+        if shouldChangeText(in: range, replacementString: formatted) {
+            replaceCharacters(in: range, with: formatted)
+            didChangeText()
+        }
+        suppressCompletion = false
+        let newLen = (formatted as NSString).length
+        if sel.length > 0 {
+            setSelectedRange(NSRange(location: range.location, length: newLen))
+        } else {
+            setSelectedRange(NSRange(location: min(sel.location, newLen), length: 0))
+        }
+        scheduleHighlight(delay: 0)
     }
 
     public func run() {
