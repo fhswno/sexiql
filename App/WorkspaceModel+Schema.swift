@@ -183,11 +183,19 @@ extension WorkspaceModel {
                     tableName: object.name
                 )
             }
+            let tableInsert = quoteIfNeeded(object.name, kind: kind)
+            let qualifiedInsert: String
+            if let schema = object.schema, !schema.isEmpty {
+                qualifiedInsert = quoteIfNeeded(schema, kind: kind) + "." + tableInsert
+            } else {
+                qualifiedInsert = tableInsert
+            }
             return SQLCompletionObject(
                 name: object.name,
-                insertText: quoteIfNeeded(object.name, kind: kind),
+                insertText: qualifiedInsert,
                 kind: object.kind == .view ? .view : .table,
-                columns: columns
+                columns: columns,
+                schema: object.schema
             )
         }
         let sql = selectedTabID.flatMap { tabTexts[$0] } ?? ""
