@@ -55,6 +55,8 @@ public final class SQLEditorTextView: NSTextView {
         textContainer?.lineFragmentPadding = 4
         textContainer?.containerSize = NSSize(width: max(bounds.width, 1), height: CGFloat.greatestFiniteMagnitude)
         isAutomaticTextCompletionEnabled = false
+        usesFindBar = true
+        isIncrementalSearchingEnabled = true
 
         typingAttributes = Self.baseTypingAttributes(layoutManager: layoutManager)
         defaultParagraphStyle = typingAttributes[.paragraphStyle] as? NSParagraphStyle
@@ -64,6 +66,30 @@ public final class SQLEditorTextView: NSTextView {
         completion.onAccept = { [weak self] item in
             self?.insertCompletion(item)
         }
+    }
+
+    public override func performTextFinderAction(_ sender: Any?) {
+        completion.hide()
+        super.performTextFinderAction(sender)
+        enclosingScrollView?.tile()
+    }
+
+    public func showFindBar() {
+        let item = NSMenuItem()
+        item.tag = Int(NSTextFinder.Action.showFindInterface.rawValue)
+        performTextFinderAction(item)
+    }
+
+    public func findNext() {
+        let item = NSMenuItem()
+        item.tag = Int(NSTextFinder.Action.nextMatch.rawValue)
+        performTextFinderAction(item)
+    }
+
+    public func findPrevious() {
+        let item = NSMenuItem()
+        item.tag = Int(NSTextFinder.Action.previousMatch.rawValue)
+        performTextFinderAction(item)
     }
 
     public static let lineHeightPadding: CGFloat = 4
@@ -312,6 +338,18 @@ public final class SQLEditorTextView: NSTextView {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if flags == .command, event.charactersIgnoringModifiers == "/" {
             toggleLineComment()
+            return true
+        }
+        if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "f" {
+            showFindBar()
+            return true
+        }
+        if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "g" {
+            findNext()
+            return true
+        }
+        if flags == [.command, .shift], event.charactersIgnoringModifiers?.lowercased() == "g" {
+            findPrevious()
             return true
         }
         if flags == [.command, .shift], event.charactersIgnoringModifiers?.lowercased() == "f" {
