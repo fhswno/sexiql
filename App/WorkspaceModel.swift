@@ -82,6 +82,8 @@ final class WorkspaceModel {
     var settingsFocusSection: SettingsSection?
     var showingSettingsSearch = false
     var copySelectedRowsHandler: (() -> Void)?
+    var pendingDisconnect: ConnectionProfile?
+    private var didRestoreConnections = false
     var canCopySelectedRows: Bool { copySelectedRowsHandler != nil }
 
     func isQueryRunning(on tabID: UUID?) -> Bool {
@@ -100,11 +102,44 @@ final class WorkspaceModel {
         self.credentialStore = credentialStore
         self.connectionManager = ConnectionManager(credentialStore: credentialStore)
         self.document = (try? store.load()) ?? WorkspaceDocument()
-        self.selectedTabID = document.selectedTabID ?? document.openTabs.first?.id
-        for tab in document.openTabs {
-            tabTexts[tab.id] = tab.sql
+        if document.settings.autoRestoreWorkspace {
+            selectedTabID = document.selectedTabID ?? document.openTabs.first?.id
+            selectedConnectionID = document.selectedConnectionID
+            for tab in document.openTabs {
+                tabTexts[tab.id] = tab.sql
+            }
+        } else {
+            document.openTabs = []
+            document.selectedTabID = nil
+            selectedTabID = nil
+            let tab = EditorTabState(title: "Untitled Query", sql: "", titleIsCustom: false)
+            document.openTabs = [tab]
+            selectedTabID = tab.id
+            tabTexts[tab.id] = ""
+        }
+        if document.openTabs.isEmpty {
+            let tab = EditorTabState(title: "Untitled Query", sql: "", titleIsCustom: false)
+            document.openTabs = [tab]
+            selectedTabID = tab.id
+            tabTexts[tab.id] = ""
         }
         bumpEditorContentEpoch()
+    }
+
+    func restoreLiveConnectionsIfNeeded() {
+        guard !didRestoreConnections else { return }
+        didRestoreConnections = true
+        guard document.settings.autoRestoreWorkspace else { return }
+        var ids = document.reconnectProfileIDs
+        if let selected = document.selectedConnectionID {
+            ids.append(selected)
+        }
+        ids.append(contentsOf: document.openTabs.compactMap(\.connectionProfileID))
+        var seen = Set<UUID>()
+        for id in ids where seen.insert(id).inserted {
+            guard let profile = document.connections.first(where: { $0.id == id }) else { continue }
+            reconnectQuietly(profile)
+        }
     }
 
     func bumpEditorContentEpoch() {
