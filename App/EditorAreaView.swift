@@ -74,6 +74,10 @@ struct EditorAreaView: View {
                         model.formatActiveEditor = { [weak host] in
                             host?.activeTextView?.formatActiveSnippet()
                         }
+                        model.showFindInEditor = { [weak host] in
+                            host?.window?.makeFirstResponder(host?.activeTextView)
+                            host?.activeTextView?.showFindBar()
+                        }
                     }
                 )
                 .frame(minHeight: SexiQLLayout.editorMinHeight)
