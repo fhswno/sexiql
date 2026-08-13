@@ -167,7 +167,7 @@ struct SidebarConnectionsView: View {
             Menu {
                 if status == .connected {
                     Button("Disconnect", role: .destructive) {
-                        model.disconnect(connection)
+                        model.requestDisconnect(connection)
                     }
                 } else {
                     Button("Connect") {
@@ -212,7 +212,7 @@ struct SidebarConnectionsView: View {
         .contextMenu {
             if status == .connected {
                 Button("Disconnect", role: .destructive) {
-                    model.disconnect(connection)
+                    model.requestDisconnect(connection)
                 }
             } else {
                 Button("Connect") {
