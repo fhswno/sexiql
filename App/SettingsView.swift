@@ -2,6 +2,19 @@ import SwiftUI
 import SQLCore
 import SQLUI
 
+struct SettingsChrome: View {
+    @Bindable var model: WorkspaceModel
+    var preferredScheme: ColorScheme?
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        SettingsView()
+            .environment(model)
+            .preferredColorScheme(preferredScheme)
+            .tint(SexiQLColors.chromeTint(model.document.settings.tintName, scheme: colorScheme))
+    }
+}
+
 struct SettingsView: View {
     @Environment(WorkspaceModel.self) private var model
     @State private var filter = ""
@@ -27,12 +40,12 @@ struct SettingsView: View {
                             }
                         }
                         .pickerStyle(.segmented)
-                        Picker("Chrome tint", selection: tintBinding) {
-                            Text("System Accent").tag(String?.none)
-                            Text("Indigo").tag(Optional("indigo"))
-                            Text("Teal").tag(Optional("teal"))
-                            Text("Pink").tag(Optional("pink"))
+                        Picker("Accent Color", selection: tintBinding) {
+                            Text("System").tag(String?.none)
+                            Text("Blue").tag(Optional("blue"))
                             Text("Orange").tag(Optional("orange"))
+                            Text("Green").tag(Optional("green"))
+                            Text("Purple").tag(Optional("purple"))
                         }
                         Toggle("Compact result grid", isOn: compactGridBinding)
                         Picker("Copy selected rows as", selection: copyFormatBinding) {
