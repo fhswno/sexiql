@@ -26,6 +26,7 @@ final class StatementResult: Identifiable {
     var undoStack: [CellEdit] = []
     var redoStack: [CellEdit] = []
     var filterText = ""
+    var appliedLimit: Int?
 
     init(label: String) {
         self.label = label
