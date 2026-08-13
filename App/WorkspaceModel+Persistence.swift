@@ -28,6 +28,28 @@ extension WorkspaceModel {
             return updated
         }
         document.selectedTabID = selectedTabID
+        document.selectedConnectionID = selectedConnectionID
+        document.reconnectProfileIDs = connectedProfileIDs()
         try? store.save(document)
+    }
+
+    func persistSessionToDisk() {
+        var snapshot = document
+        snapshot.openTabs = document.openTabs.map { tab in
+            var updated = tab
+            updated.sql = tabTexts[tab.id] ?? tab.sql
+            return updated
+        }
+        snapshot.selectedTabID = selectedTabID
+        snapshot.selectedConnectionID = selectedConnectionID
+        snapshot.reconnectProfileIDs = connectedProfileIDs()
+        try? store.save(snapshot)
+    }
+
+    private func connectedProfileIDs() -> [UUID] {
+        connectionStatuses.compactMap { id, status in
+            if case .connected = status { return id }
+            return nil
+        }
     }
 }
