@@ -93,9 +93,14 @@ final class WorkspaceModel {
     var settingsFocusSection: SettingsSection?
     var showingSettingsSearch = false
     var copySelectedRowsHandler: (() -> Void)?
+    var addResultRowHandler: (() -> Void)?
+    var deleteResultRowsHandler: (() -> Void)?
     var pendingDisconnect: ConnectionProfile?
+    var pendingDeleteRows: (tabID: UUID, resultIndex: Int, rows: [Int])?
     private var didRestoreConnections = false
     var canCopySelectedRows: Bool { copySelectedRowsHandler != nil }
+    var canAddResultRow: Bool { addResultRowHandler != nil }
+    var canDeleteResultRows: Bool { deleteResultRowsHandler != nil }
 
     func isQueryRunning(on tabID: UUID?) -> Bool {
         guard let tabID else { return false }
