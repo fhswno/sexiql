@@ -76,6 +76,36 @@ public struct ResultSetModel: Sendable, Equatable {
         editedCells.insert(CellKey(row: row, column: column))
     }
 
+    public mutating func insertRow(_ row: SQLRow, at index: Int) {
+        guard row.values.count == columns.count else { return }
+        let i = min(max(index, 0), rows.count)
+        rows.insert(row, at: i)
+        editedCells = Set(editedCells.map { key in
+            key.row >= i ? CellKey(row: key.row + 1, column: key.column) : key
+        })
+        if let total = totalRowCount {
+            totalRowCount = total + 1
+        }
+    }
+
+    public mutating func removeRow(at index: Int) {
+        guard rows.indices.contains(index) else { return }
+        rows.remove(at: index)
+        var next = Set<CellKey>()
+        for key in editedCells {
+            if key.row == index { continue }
+            if key.row > index {
+                next.insert(CellKey(row: key.row - 1, column: key.column))
+            } else {
+                next.insert(key)
+            }
+        }
+        editedCells = next
+        if let total = totalRowCount {
+            totalRowCount = max(0, total - 1)
+        }
+    }
+
     public subscript(row: Int, column: Int) -> SQLValue {
         guard rows.indices.contains(row), columns.indices.contains(column) else { return .null }
         let values = rows[row].values
