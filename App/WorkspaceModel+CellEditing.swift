@@ -138,25 +138,7 @@ extension WorkspaceModel {
         primaryKeyValues: [SQLValue],
         kind: DatabaseKind
     ) -> (sql: String, parameters: [SQLValue]) {
-        let tableName = "\"" + table.name.replacingOccurrences(of: "\"", with: "\"\"") + "\""
-        let columnName = "\"" + table.columns[column].replacingOccurrences(of: "\"", with: "\"\"") + "\""
-        let pkCount = primaryKeyValues.count
-        var setPlaceholder = "?"
-        var wherePlaceholders: [String] = []
-        if kind == .postgres {
-            setPlaceholder = "$1"
-            for index in 1...pkCount {
-                wherePlaceholders.append("$\(index + 1)")
-            }
-        } else {
-            wherePlaceholders = Array(repeating: "?", count: pkCount)
-        }
-        var conditions: [String] = []
-        for (index, pk) in table.primaryKey.enumerated() where index < wherePlaceholders.count {
-            let quoted = "\"" + pk.replacingOccurrences(of: "\"", with: "\"\"") + "\""
-            conditions.append("\(quoted) = \(wherePlaceholders[index])")
-        }
-        let sql = "UPDATE \(tableName) SET \(columnName) = \(setPlaceholder) WHERE " + conditions.joined(separator: " AND ")
+        let sql = CellUpdateSQL.statement(table: table, column: column, kind: kind)
         return (sql, [value] + primaryKeyValues)
     }
 
