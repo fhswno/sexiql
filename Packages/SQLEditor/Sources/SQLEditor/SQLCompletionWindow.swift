@@ -3,6 +3,11 @@ import AppKit
 @MainActor
 public final class SQLCompletionWindow: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     public var onAccept: ((SQLCompletionItem) -> Void)?
+    public var acceptOnSingleClick = false
+    public var hidesWhenInactive: Bool {
+        get { panel.hidesOnDeactivate }
+        set { panel.hidesOnDeactivate = newValue }
+    }
 
     private let panel: NSPanel
     private let tableView = NSTableView()
@@ -40,6 +45,7 @@ public final class SQLCompletionWindow: NSObject, NSTableViewDataSource, NSTable
         tableView.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
         tableView.dataSource = self
         tableView.delegate = self
+        tableView.action = #selector(singleClick)
         tableView.doubleAction = #selector(doubleClick)
         tableView.target = self
 
@@ -59,22 +65,33 @@ public final class SQLCompletionWindow: NSObject, NSTableViewDataSource, NSTable
         return items[row]
     }
 
-    public func show(_ items: [SQLCompletionItem], from textView: NSTextView) {
-        self.items = items
+    public func show(
+        _ items: [SQLCompletionItem],
+        from textView: NSTextView,
+        maxVisible: Int = 8,
+        emptyMessage: String? = nil,
+        belowView: Bool = false
+    ) {
+        if items.isEmpty, let emptyMessage, !emptyMessage.isEmpty {
+            self.items = [
+                SQLCompletionItem(kind: .table, label: emptyMessage, insertText: "", detail: nil),
+            ]
+        } else {
+            self.items = items
+        }
         tableView.reloadData()
-        if !items.isEmpty {
+        if !self.items.isEmpty {
             tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         }
-        guard !items.isEmpty, let window = textView.window else {
+        guard !self.items.isEmpty, let window = textView.window else {
             hide()
             return
         }
 
-        let caret = textView.selectedRange()
-        let rect = textView.firstRect(forCharacterRange: caret, actualRange: nil)
-        let count = min(items.count, 8)
+        let rect = belowView ? fieldScreenRect(in: textView) : caretScreenRect(in: textView)
+        let count = min(self.items.count, maxVisible)
         let height = CGFloat(count) * tableView.rowHeight + 6
-        let width = preferredWidth(for: items)
+        let width = preferredWidth(for: self.items)
         var frame = NSRect(x: rect.minX, y: rect.minY - height - 4, width: width, height: height)
         if let screen = window.screen ?? NSScreen.main {
             if frame.minY < screen.visibleFrame.minY {
@@ -82,6 +99,9 @@ public final class SQLCompletionWindow: NSObject, NSTableViewDataSource, NSTable
             }
             if frame.maxX > screen.visibleFrame.maxX {
                 frame.origin.x = screen.visibleFrame.maxX - frame.width
+            }
+            if frame.minX < screen.visibleFrame.minX {
+                frame.origin.x = screen.visibleFrame.minX + 4
             }
         }
         panel.setFrame(frame, display: true)
@@ -113,14 +133,56 @@ public final class SQLCompletionWindow: NSObject, NSTableViewDataSource, NSTable
 
     @discardableResult
     public func accept() -> Bool {
-        guard let item = selectedItem else { return false }
+        guard let item = selectedItem, !item.insertText.isEmpty else { return false }
         onAccept?(item)
         hide()
         return true
     }
 
+    @objc private func singleClick() {
+        guard acceptOnSingleClick else { return }
+        _ = accept()
+    }
+
     @objc private func doubleClick() {
         _ = accept()
+    }
+
+    private func fieldScreenRect(in textView: NSTextView) -> NSRect {
+        guard let window = textView.window else { return caretScreenRect(in: textView) }
+        let host = textView.enclosingScrollView ?? textView
+        var rect = window.convertToScreen(host.convert(host.bounds, to: nil))
+        let caret = textView.firstRect(forCharacterRange: textView.selectedRange(), actualRange: nil)
+        if rect.insetBy(dx: -8, dy: -40).contains(caret.origin) {
+            rect.origin.x = caret.minX
+        }
+        return rect
+    }
+
+    private func caretScreenRect(in textView: NSTextView) -> NSRect {
+        let range = textView.selectedRange()
+        let first = textView.firstRect(forCharacterRange: range, actualRange: nil)
+        if let window = textView.window {
+            let viewRect = window.convertToScreen(textView.convert(textView.bounds, to: nil)).insetBy(dx: -48, dy: -48)
+            if viewRect.contains(first.origin) || viewRect.intersects(first) {
+                return first
+            }
+        }
+        guard let window = textView.window else { return first }
+        var local = NSRect(
+            x: textView.textContainerInset.width,
+            y: textView.textContainerInset.height,
+            width: 1,
+            height: textView.font?.boundingRectForFont.height ?? 16
+        )
+        if let layout = textView.layoutManager, let container = textView.textContainer {
+            let glyphs = layout.glyphRange(forCharacterRange: NSRange(location: range.location, length: 0), actualCharacterRange: nil)
+            let used = layout.boundingRect(forGlyphRange: glyphs, in: container)
+            if !used.isEmpty {
+                local = used.offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y)
+            }
+        }
+        return window.convertToScreen(textView.convert(local, to: nil))
     }
 
     public func numberOfRows(in tableView: NSTableView) -> Int { items.count }
