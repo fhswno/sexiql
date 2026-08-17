@@ -45,6 +45,63 @@ final class SchemaBrowserTests: XCTestCase {
         XCTAssertEqual(objects[1].kind, .view)
     }
 
+    func testParsesPostgresIndexesAndForeignKeys() {
+        let indexRows = [
+            SQLRow(values: [.string("users_pkey"), .bool(true), .bool(true), .string("id")]),
+            SQLRow(values: [.string("users_email_key"), .bool(true), .bool(false), .string("email")]),
+        ]
+        let indexes = SchemaBrowser.indexes(fromPostgresRows: indexRows)
+        XCTAssertEqual(indexes.count, 2)
+        XCTAssertTrue(indexes[0].isPrimary)
+        XCTAssertEqual(indexes[1].detail, "UNIQUE (email)")
+
+        let fkRows = [
+            SQLRow(values: [.string("orders_user_fk"), .string("user_id"), .string("public"), .string("users"), .string("id")]),
+        ]
+        let keys = SchemaBrowser.foreignKeys(fromPostgresRows: fkRows)
+        XCTAssertEqual(keys.count, 1)
+        XCTAssertEqual(keys[0].detail, "user_id → public.users.id")
+    }
+
+    func testParsesSQLiteForeignKeys() {
+        let rows = [
+            SQLRow(values: [.int(0), .int(0), .string("users"), .string("user_id"), .string("id")]),
+            SQLRow(values: [.int(0), .int(1), .string("users"), .string("org_id"), .string("org_id")]),
+        ]
+        let keys = SchemaBrowser.foreignKeys(fromSQLiteRows: rows)
+        XCTAssertEqual(keys.count, 1)
+        XCTAssertEqual(keys[0].columns, ["user_id", "org_id"])
+        XCTAssertEqual(keys[0].refTable, "users")
+        XCTAssertEqual(keys[0].refColumns, ["id", "org_id"])
+    }
+
+    func testParsesMySQLIndexes() {
+        let rows = [
+            SQLRow(values: [.string("PRIMARY"), .int(0), .string("id")]),
+            SQLRow(values: [.string("idx_name"), .int(1), .string("name")]),
+        ]
+        let indexes = SchemaBrowser.indexes(fromMySQLRows: rows)
+        XCTAssertTrue(indexes[0].isPrimary && indexes[0].isUnique)
+        XCTAssertEqual(indexes[1].detail, "INDEX (name)")
+    }
+
+    func testSynthesizesPrimaryWhenMissing() {
+        let columns = [
+            SchemaColumn(name: "id", dataType: "INTEGER", isPrimaryKey: true, isNullable: false),
+            SchemaColumn(name: "name", dataType: "TEXT", isPrimaryKey: false, isNullable: false),
+        ]
+        let added = SchemaBrowser.ensuringPrimaryIndex([], columns: columns)
+        XCTAssertEqual(added.count, 1)
+        XCTAssertTrue(added[0].isPrimary)
+        XCTAssertEqual(added[0].detail, "PRIMARY (id)")
+
+        let existing = [
+            SchemaIndex(name: "users_pkey", columns: ["id"], isUnique: true, isPrimary: true),
+        ]
+        let kept = SchemaBrowser.ensuringPrimaryIndex(existing, columns: columns)
+        XCTAssertEqual(kept.map(\.name), ["users_pkey"])
+    }
+
     func testSearchPathSQLQuotesSchemas() {
         let sql = SchemaBrowser.searchPathSQL(schemas: ["public", "app", "public"])
         XCTAssertEqual(sql, "SET search_path TO \"$user\", \"public\", \"app\"")
