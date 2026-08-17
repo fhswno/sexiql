@@ -154,6 +154,53 @@ final class EditableTableResolverTests: XCTestCase {
         XCTAssertEqual(sql, "UPDATE `app`.`users` SET `name` = ? WHERE `id` = ?")
     }
 
+    func testDeleteAndInsertSQL() {
+        let table = EditableTable(name: "users", columns: ["id", "name"], primaryKey: ["id"], schema: "app")
+        XCTAssertEqual(
+            CellDeleteSQL.statement(table: table, kind: .mysql),
+            "DELETE FROM `app`.`users` WHERE `id` = ?"
+        )
+        XCTAssertEqual(
+            CellInsertSQL.defaultValues(table: table, kind: .postgres),
+            "INSERT INTO \"app\".\"users\" DEFAULT VALUES RETURNING *"
+        )
+        XCTAssertEqual(
+            CellInsertSQL.defaultValues(table: table, kind: .mysql),
+            "INSERT INTO `app`.`users` () VALUES ()"
+        )
+        XCTAssertEqual(
+            CellInsertSQL.explicit(table: table, columnNames: ["id", "name"], kind: .sqlite),
+            "INSERT INTO \"app\".\"users\" (\"id\", \"name\") VALUES (?, ?) RETURNING *"
+        )
+    }
+
+    func testDraftMissingRequiredSkipsPrimaryKey() {
+        let columns = [
+            SQLColumn(name: "id", dataType: "int", isNullable: false, ordinal: 0),
+            SQLColumn(name: "company_name", dataType: "text", isNullable: false, ordinal: 1),
+            SQLColumn(name: "note", dataType: "text", isNullable: true, ordinal: 2),
+        ]
+        let missing = DraftRowRequirements.missing(
+            columns: columns,
+            values: [.null, .null, .null],
+            primaryKey: ["id"]
+        )
+        XCTAssertEqual(missing, ["company_name"])
+        let ready = DraftRowRequirements.missing(
+            columns: columns,
+            values: [.null, .string("Acme"), .null],
+            primaryKey: ["id"]
+        )
+        XCTAssertTrue(ready.isEmpty)
+    }
+
+    func testMutationRowIndexShift() {
+        XCTAssertEqual(MutationRowIndex.afterDelete(5, deleted: 2), 4)
+        XCTAssertNil(MutationRowIndex.afterDelete(2, deleted: 2))
+        XCTAssertEqual(MutationRowIndex.afterInsert(2, inserted: 2), 3)
+        XCTAssertEqual(MutationRowIndex.afterInsert(1, inserted: 2), 1)
+    }
+
     func testPostgresUpdateSQLUnchanged() {
         let table = EditableTable(name: "users", columns: ["id", "name"], primaryKey: ["id"])
         let sql = CellUpdateSQL.statement(table: table, column: 1, kind: .postgres)
