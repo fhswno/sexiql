@@ -46,7 +46,8 @@ enum MySQLRowCodec: Sendable {
                 dataType: displayType(definition.type),
                 isNullable: (definition.flags & 0x0001) == 0,
                 ordinal: index,
-                tableName: definition.tableName
+                tableName: definition.tableName,
+                tableSchema: definition.schema
             )
         }
     }
