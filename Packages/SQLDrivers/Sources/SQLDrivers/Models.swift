@@ -35,6 +35,14 @@ public enum SQLValue: Sendable, Equatable {
     case data(Data)
     case date(Date)
 
+    public var text: String? {
+        switch self {
+        case .null: nil
+        case .string(let value): value
+        default: displayString
+        }
+    }
+
     public var displayString: String {
         switch self {
         case .null: "NULL"
