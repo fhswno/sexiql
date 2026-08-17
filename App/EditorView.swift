@@ -178,6 +178,7 @@ struct ResultsPaneView: View {
                         sortAscending: $sortAscending,
                         selectedIDs: $selectedRowIDs,
                         isEditable: result.editableTable != nil && result.status == .complete,
+                        draftRowID: result.draftRowIndex,
                         onEditCell: { row, column, value in
                             model.handleCellEdit(
                                 tabID: tabID,
@@ -187,8 +188,29 @@ struct ResultsPaneView: View {
                                 newValue: value
                             )
                         },
+                        onDeleteRows: { ids in
+                            model.requestDeleteResultRows(
+                                tabID: tabID,
+                                resultIndex: index,
+                                rows: Array(ids)
+                            )
+                        },
                         onCopied: { showCopyFeedback($0) }
                     )
+                    .onAppear { registerRowHandlers(result, index: index) }
+                    .onChange(of: selectedRowIDs) { _, _ in
+                        registerRowHandlers(result, index: index)
+                    }
+                    .onChange(of: result.editableTable != nil) { _, _ in
+                        registerRowHandlers(result, index: index)
+                    }
+                    .onChange(of: result.model.rows.count) { _, _ in
+                        selectedRowIDs = selectedRowIDs.filter { $0 < result.model.rows.count }
+                    }
+                    .onDisappear {
+                        model.addResultRowHandler = nil
+                        model.deleteResultRowsHandler = nil
+                    }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     statusBar(result)
                 }
@@ -229,13 +251,35 @@ struct ResultsPaneView: View {
 
                 if result.editableTable != nil {
                     Button {
+                        model.addResultRow(tabID: tabID, resultIndex: resultIndex(of: result))
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(model.busyProfileID != nil)
+                    .help("Add row")
+
+                    Button {
+                        model.requestDeleteResultRows(
+                            tabID: tabID,
+                            resultIndex: resultIndex(of: result),
+                            rows: Array(selectedRowIDs)
+                        )
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(selectedRowIDs.isEmpty || model.busyProfileID != nil)
+                    .help(selectedRowIDs.count > 1 ? "Delete \(selectedRowIDs.count) rows" : "Delete row")
+
+                    Button {
                         model.undoLastEdit(tabID: tabID, resultIndex: resultIndex(of: result))
                     } label: {
                         Image(systemName: "arrow.uturn.backward")
                     }
                     .buttonStyle(.borderless)
                     .disabled(result.undoStack.isEmpty)
-                    .help("Undo cell edit (⌘Z)")
+                    .help("Undo edit")
 
                     Button {
                         model.redoLastEdit(tabID: tabID, resultIndex: resultIndex(of: result))
@@ -244,7 +288,7 @@ struct ResultsPaneView: View {
                     }
                     .buttonStyle(.borderless)
                     .disabled(result.redoStack.isEmpty)
-                    .help("Redo cell edit (⌘⇧Z)")
+                    .help("Redo edit")
                 }
 
                 Spacer(minLength: 0)
@@ -284,6 +328,26 @@ struct ResultsPaneView: View {
             Rectangle()
                 .fill(Color(nsColor: .separatorColor).opacity(0.45))
                 .frame(height: 1)
+        }
+    }
+
+    private func registerRowHandlers(_ result: StatementResult, index: Int) {
+        let editable = result.editableTable != nil && result.status == .complete
+        if editable {
+            model.addResultRowHandler = { [weak model] in
+                model?.addResultRow(tabID: tabID, resultIndex: index)
+            }
+            if selectedRowIDs.isEmpty {
+                model.deleteResultRowsHandler = nil
+            } else {
+                let rows = Array(selectedRowIDs)
+                model.deleteResultRowsHandler = { [weak model] in
+                    model?.requestDeleteResultRows(tabID: tabID, resultIndex: index, rows: rows)
+                }
+            }
+        } else {
+            model.addResultRowHandler = nil
+            model.deleteResultRowsHandler = nil
         }
     }
 
