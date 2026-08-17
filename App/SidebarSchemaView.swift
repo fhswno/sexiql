@@ -121,6 +121,130 @@ struct SidebarSchemaView: View {
     }
 
     @ViewBuilder
+    private func schemaExpandedBody(_ object: SchemaObject) -> some View {
+        let columns = model.schemaColumnsByID[object.id]
+        if let columns {
+            ForEach(columns) { col in
+                HStack(spacing: SexiQLSpace.sm) {
+                    Image(systemName: col.isPrimaryKey ? "key.fill" : "circle")
+                        .font(.system(size: 8))
+                        .foregroundStyle(col.isPrimaryKey ? Color.accentColor : Color.secondary.opacity(0.4))
+                        .frame(width: 14)
+                    Text(col.name)
+                        .font(SexiQLType.rowSubtitle)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text(col.dataType)
+                        .font(SexiQLType.meta)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+                .padding(.leading, 28)
+                .padding(.vertical, 1)
+            }
+        } else {
+            HStack {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Loading columns…")
+                    .font(SexiQLType.meta)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.leading, 28)
+            .padding(.vertical, SexiQLSpace.xs)
+        }
+
+        if object.kind == .table {
+            if let indexes = model.schemaIndexesByID[object.id] {
+                if !indexes.isEmpty {
+                    schemaGroupLabel("Indexes")
+                    ForEach(indexes) { index in
+                        schemaRelationRow(
+                            title: index.name,
+                            detail: index.detail,
+                            systemImage: index.isPrimary ? "key.fill" : "list.number"
+                        )
+                        .contextMenu {
+                            Button("Copy name") { copyToPasteboard(index.name) }
+                        }
+                    }
+                }
+            } else if columns != nil {
+                schemaLoadingRow("Loading indexes…")
+            }
+
+            if let keys = model.schemaForeignKeysByID[object.id] {
+                if !keys.isEmpty {
+                    schemaGroupLabel("Foreign keys")
+                    ForEach(keys) { key in
+                        Button {
+                            model.openForeignKey(key)
+                        } label: {
+                            schemaRelationRow(
+                                title: key.name,
+                                detail: key.detail,
+                                systemImage: "arrow.right.square"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open \(key.refTable)")
+                        .contextMenu {
+                            Button("Open \(key.refTable)") { model.openForeignKey(key) }
+                            Button("Copy name") { copyToPasteboard(key.name) }
+                        }
+                    }
+                }
+            } else if columns != nil {
+                schemaLoadingRow("Loading foreign keys…")
+            }
+        }
+    }
+
+    private func schemaGroupLabel(_ title: String) -> some View {
+        Text(title)
+            .font(SexiQLType.meta)
+            .foregroundStyle(.secondary)
+            .textCase(.uppercase)
+            .padding(.leading, 28)
+            .padding(.top, SexiQLSpace.sm)
+            .padding(.bottom, 2)
+    }
+
+    private func schemaLoadingRow(_ title: String) -> some View {
+        HStack {
+            ProgressView()
+                .controlSize(.mini)
+            Text(title)
+                .font(SexiQLType.meta)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.leading, 28)
+        .padding(.vertical, SexiQLSpace.xs)
+    }
+
+    private func schemaRelationRow(title: String, detail: String, systemImage: String) -> some View {
+        HStack(spacing: SexiQLSpace.sm) {
+            Image(systemName: systemImage)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 14)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title)
+                    .font(SexiQLType.rowSubtitle)
+                    .lineLimit(1)
+                Text(detail)
+                    .font(SexiQLType.meta)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 28)
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
     private func schemaObjectRow(_ object: SchemaObject, showSchema: Bool) -> some View {
         let expanded = model.schemaExpandedIDs.contains(object.id)
         VStack(alignment: .leading, spacing: 0) {
@@ -161,37 +285,7 @@ struct SidebarSchemaView: View {
             }
 
             if expanded {
-                let columns = model.schemaColumnsByID[object.id]
-                if let columns {
-                    ForEach(columns) { col in
-                        HStack(spacing: SexiQLSpace.sm) {
-                            Image(systemName: col.isPrimaryKey ? "key.fill" : "circle")
-                                .font(.system(size: 8))
-                                .foregroundStyle(col.isPrimaryKey ? Color.accentColor : Color.secondary.opacity(0.4))
-                                .frame(width: 14)
-                            Text(col.name)
-                                .font(SexiQLType.rowSubtitle)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                            Text(col.dataType)
-                                .font(SexiQLType.meta)
-                                .foregroundStyle(.tertiary)
-                                .lineLimit(1)
-                        }
-                        .padding(.leading, 28)
-                        .padding(.vertical, 1)
-                    }
-                } else {
-                    HStack {
-                        ProgressView()
-                            .controlSize(.mini)
-                        Text("Loading columns…")
-                            .font(SexiQLType.meta)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.leading, 28)
-                    .padding(.vertical, SexiQLSpace.xs)
-                }
+                schemaExpandedBody(object)
             }
         }
     }
