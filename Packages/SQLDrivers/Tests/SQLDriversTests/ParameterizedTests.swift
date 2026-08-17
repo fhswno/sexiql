@@ -135,6 +135,31 @@ final class EditableTableResolverTests: XCTestCase {
         XCTAssertNil(table, "joined columns come from two tables — must not be editable")
     }
 
+    func testSingleTableNameIgnoresJoins() {
+        let one = [
+            SQLColumn(name: "id", dataType: "int", ordinal: 0, tableName: "users"),
+            SQLColumn(name: "name", dataType: "text", ordinal: 1, tableName: "users"),
+        ]
+        XCTAssertEqual(EditableTableResolver.singleTableName(from: one), "users")
+        let joined = [
+            SQLColumn(name: "id", dataType: "int", ordinal: 0, tableName: "a"),
+            SQLColumn(name: "y", dataType: "text", ordinal: 1, tableName: "b"),
+        ]
+        XCTAssertNil(EditableTableResolver.singleTableName(from: joined))
+    }
+
+    func testMySQLUpdateSQLUsesBackticks() {
+        let table = EditableTable(name: "users", columns: ["id", "name"], primaryKey: ["id"], schema: "app")
+        let sql = CellUpdateSQL.statement(table: table, column: 1, kind: .mysql)
+        XCTAssertEqual(sql, "UPDATE `app`.`users` SET `name` = ? WHERE `id` = ?")
+    }
+
+    func testPostgresUpdateSQLUnchanged() {
+        let table = EditableTable(name: "users", columns: ["id", "name"], primaryKey: ["id"])
+        let sql = CellUpdateSQL.statement(table: table, column: 1, kind: .postgres)
+        XCTAssertEqual(sql, "UPDATE \"users\" SET \"name\" = $1 WHERE \"id\" = $2")
+    }
+
     func testCompositePrimaryKey() async throws {
         let connection = try await makeConnection()
         _ = try await connection.execute("CREATE TABLE t (k1 INTEGER, k2 INTEGER, v TEXT, PRIMARY KEY (k1, k2))")
