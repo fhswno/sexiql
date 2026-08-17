@@ -29,6 +29,7 @@ extension WorkspaceModel {
 
     func closeTab(_ tabID: UUID) {
         cancelRun(tabID)
+        cancelEditorAI()
         clearAIChat(tabID)
         document.openTabs.removeAll { $0.id == tabID }
         tabTexts[tabID] = nil
