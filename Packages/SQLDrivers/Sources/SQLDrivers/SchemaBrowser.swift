@@ -57,10 +57,20 @@ public enum SchemaBrowser: Sendable {
             """
         case .postgres:
             sql = """
-            SELECT table_schema, table_name, table_type
-            FROM information_schema.tables
-            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-            ORDER BY table_schema, table_name
+            SELECT n.nspname AS table_schema,
+                   c.relname AS table_name,
+                   CASE c.relkind
+                     WHEN 'v' THEN 'VIEW'
+                     WHEN 'm' THEN 'VIEW'
+                     ELSE 'BASE TABLE'
+                   END AS table_type
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND n.nspname NOT LIKE 'pg_temp_%'
+              AND n.nspname NOT LIKE 'pg_toast_temp_%'
+            ORDER BY 1, 2
             """
         case .mysql:
             sql = """
@@ -71,7 +81,25 @@ public enum SchemaBrowser: Sendable {
             """
         }
         let result = try await connection.execute(sql)
-        return result.rows.compactMap { row in parseObjectRow(row, kind: kind) }
+        return objects(from: result, kind: kind)
+    }
+
+    public static func objects(from result: QueryResult, kind: DatabaseKind) -> [SchemaObject] {
+        result.rows.compactMap { parseObjectRow($0, kind: kind) }
+    }
+
+    public static func searchPathSQL(schemas: [String]) -> String? {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for name in schemas where !name.isEmpty {
+            let key = name.lowercased()
+            if seen.insert(key).inserted {
+                ordered.append(name)
+            }
+        }
+        guard !ordered.isEmpty else { return nil }
+        let quoted = ordered.map { quoteIdentifier($0, kind: .postgres) }.joined(separator: ", ")
+        return "SET search_path TO \"$user\", \(quoted)"
     }
 
     public static func listColumns(
@@ -114,18 +142,15 @@ public enum SchemaBrowser: Sendable {
     private static func parseObjectRow(_ row: SQLRow, kind: DatabaseKind) -> SchemaObject? {
         switch kind {
         case .sqlite:
-            guard row.values.count >= 2,
-                  case .string(let name) = row.values[0] else { return nil }
-            let typeStr: String
-            if case .string(let t) = row.values[1] { typeStr = t.lowercased() } else { typeStr = "table" }
+            guard row.values.count >= 2, let name = row.values[0].text, !name.isEmpty else { return nil }
+            let typeStr = row.values[1].text?.lowercased() ?? "table"
             let objKind: SchemaObjectKind = typeStr.contains("view") ? .view : .table
             return SchemaObject(schema: nil, name: name, kind: objKind)
         case .postgres, .mysql:
             guard row.values.count >= 3,
-                  case .string(let schema) = row.values[0],
-                  case .string(let name) = row.values[1] else { return nil }
-            let typeStr: String
-            if case .string(let t) = row.values[2] { typeStr = t.uppercased() } else { typeStr = "BASE TABLE" }
+                  let schema = row.values[0].text, !schema.isEmpty,
+                  let name = row.values[1].text, !name.isEmpty else { return nil }
+            let typeStr = row.values[2].text?.uppercased() ?? "BASE TABLE"
             let objKind: SchemaObjectKind = typeStr.contains("VIEW") ? .view : .table
             return SchemaObject(schema: schema, name: name, kind: objKind)
         }
