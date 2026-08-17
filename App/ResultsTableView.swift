@@ -13,7 +13,9 @@ struct ResultsTableView: View {
     @Binding var sortAscending: Bool
     @Binding var selectedIDs: Set<Int>
     var isEditable: Bool = false
+    var draftRowID: Int? = nil
     var onEditCell: ((Int, Int, SQLValue) -> Void)?
+    var onDeleteRows: ((Set<Int>) -> Void)?
     var onCopied: ((Int) -> Void)?
 
     @Environment(WorkspaceModel.self) private var workspace
@@ -366,6 +368,10 @@ struct ResultsTableView: View {
                             .focused($editFieldFocused)
                             .onSubmit { commitEdit() }
                             .onExitCommand { cancelEdit() }
+                            .onKeyPress(.tab) {
+                                moveEdit(by: NSEvent.modifierFlags.contains(.shift) ? -1 : 1)
+                                return .handled
+                            }
                     } else {
                         cell(row.value(at: column.ordinal))
                     }
@@ -391,6 +397,9 @@ struct ResultsTableView: View {
                         Button("Set to NULL") {
                             onEditCell?(row.id, column.ordinal, .null)
                         }
+                        Button("Delete Row", role: .destructive) {
+                            onDeleteRows?(selectedIDs.contains(row.id) ? selectedIDs : [row.id])
+                        }
                     }
                 }
                 .overlay(alignment: .trailing) {
@@ -402,6 +411,8 @@ struct ResultsTableView: View {
         .background {
             if isSelected {
                 SexiQLColors.selectionFill
+            } else if draftRowID == row.id {
+                Color.accentColor.opacity(0.08)
             } else {
                 Color(nsColor: .textBackgroundColor)
             }
@@ -417,6 +428,12 @@ struct ResultsTableView: View {
             Button("Copy as CSV") { copyFromMenu(rowID: row.id, format: .csv) }
             Button("Copy as JSON") { copyFromMenu(rowID: row.id, format: .json) }
             Button("Copy as VALUES") { copyFromMenu(rowID: row.id, valuesSQL: true) }
+            if isEditable {
+                Divider()
+                Button("Delete Row", role: .destructive) {
+                    onDeleteRows?(selectedIDs.contains(row.id) ? selectedIDs : [row.id])
+                }
+            }
         }
     }
 
@@ -427,7 +444,7 @@ struct ResultsTableView: View {
     ) -> some View {
         Text("\(row.number)")
             .font(.system(size: 11, design: .monospaced))
-            .foregroundStyle(isSelected ? .primary : .tertiary)
+            .foregroundStyle(draftRowID == row.id ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(isSelected ? .primary : .tertiary))
             .padding(.trailing, hPad)
             .frame(width: indexWidth, height: rowHeight, alignment: .trailing)
             .contentShape(Rectangle())
@@ -656,6 +673,23 @@ struct ResultsTableView: View {
         DispatchQueue.main.async {
             editFieldFocused = true
         }
+    }
+
+    private func moveEdit(by delta: Int) {
+        guard let target = editing else { return }
+        guard let colIndex = model.columns.firstIndex(where: { $0.ordinal == target.column }) else { return }
+        let nextCol = colIndex + delta
+        let row = target.modelRow
+        commitEdit()
+        if model.columns.indices.contains(nextCol) {
+            beginEdit(row: row, column: model.columns[nextCol].ordinal)
+            return
+        }
+        let nextRow = row + (delta > 0 ? 1 : -1)
+        guard nextRow >= 0, nextRow < model.rows.count, let edge = delta > 0 ? model.columns.first : model.columns.last else {
+            return
+        }
+        beginEdit(row: nextRow, column: edge.ordinal)
     }
 
     private func commitEdit() {
