@@ -15,17 +15,19 @@ public struct EditableTable: Sendable, Equatable {
     }
 
     public var isEditable: Bool { !primaryKey.isEmpty }
+
+    public func qualifiedName(kind: DatabaseKind) -> String {
+        let quote = { SchemaBrowser.quoteIdentifier($0, kind: kind) }
+        if let schema, !schema.isEmpty {
+            return quote(schema) + "." + quote(name)
+        }
+        return quote(name)
+    }
 }
 
 public enum CellUpdateSQL: Sendable {
     public static func statement(table: EditableTable, column: Int, kind: DatabaseKind) -> String {
         let quote = { SchemaBrowser.quoteIdentifier($0, kind: kind) }
-        let tableName: String
-        if let schema = table.schema, !schema.isEmpty {
-            tableName = quote(schema) + "." + quote(table.name)
-        } else {
-            tableName = quote(table.name)
-        }
         let columnName = quote(table.columns[column])
         let pkCount = table.primaryKey.count
         let set: String
@@ -41,7 +43,116 @@ public enum CellUpdateSQL: Sendable {
         for (index, pk) in table.primaryKey.enumerated() where index < placeholders.count {
             conditions.append("\(quote(pk)) = \(placeholders[index])")
         }
-        return "UPDATE \(tableName) SET \(columnName) = \(set) WHERE " + conditions.joined(separator: " AND ")
+        return "UPDATE \(table.qualifiedName(kind: kind)) SET \(columnName) = \(set) WHERE " + conditions.joined(separator: " AND ")
+    }
+}
+
+public enum CellDeleteSQL: Sendable {
+    public static func statement(table: EditableTable, kind: DatabaseKind) -> String {
+        let quote = { SchemaBrowser.quoteIdentifier($0, kind: kind) }
+        let placeholders: [String]
+        if kind == .postgres {
+            placeholders = table.primaryKey.indices.map { "$\($0 + 1)" }
+        } else {
+            placeholders = Array(repeating: "?", count: table.primaryKey.count)
+        }
+        var conditions: [String] = []
+        for (index, pk) in table.primaryKey.enumerated() where index < placeholders.count {
+            conditions.append("\(quote(pk)) = \(placeholders[index])")
+        }
+        return "DELETE FROM \(table.qualifiedName(kind: kind)) WHERE " + conditions.joined(separator: " AND ")
+    }
+}
+
+public enum CellInsertSQL: Sendable {
+    public static func defaultValues(table: EditableTable, kind: DatabaseKind) -> String {
+        let name = table.qualifiedName(kind: kind)
+        switch kind {
+        case .postgres, .sqlite:
+            return "INSERT INTO \(name) DEFAULT VALUES RETURNING *"
+        case .mysql:
+            return "INSERT INTO \(name) () VALUES ()"
+        }
+    }
+
+    public static func lastInsertID(kind: DatabaseKind) -> String? {
+        switch kind {
+        case .mysql: "SELECT LAST_INSERT_ID()"
+        case .sqlite: "SELECT last_insert_rowid()"
+        case .postgres: nil
+        }
+    }
+
+    public static func explicit(table: EditableTable, columnNames: [String], kind: DatabaseKind) -> String {
+        let quote = { SchemaBrowser.quoteIdentifier($0, kind: kind) }
+        let cols = columnNames.map(quote).joined(separator: ", ")
+        let placeholders: String
+        if kind == .postgres {
+            placeholders = columnNames.indices.map { "$\($0 + 1)" }.joined(separator: ", ")
+        } else {
+            placeholders = Array(repeating: "?", count: columnNames.count).joined(separator: ", ")
+        }
+        let sql = "INSERT INTO \(table.qualifiedName(kind: kind)) (\(cols)) VALUES (\(placeholders))"
+        if kind == .postgres || kind == .sqlite {
+            return sql + " RETURNING *"
+        }
+        return sql
+    }
+
+    public static func selectByPrimaryKey(table: EditableTable, selectColumns: [String], kind: DatabaseKind) -> String {
+        let quote = { SchemaBrowser.quoteIdentifier($0, kind: kind) }
+        let cols = selectColumns.map(quote).joined(separator: ", ")
+        let placeholders: [String]
+        if kind == .postgres {
+            placeholders = table.primaryKey.indices.map { "$\($0 + 1)" }
+        } else {
+            placeholders = Array(repeating: "?", count: table.primaryKey.count)
+        }
+        var conditions: [String] = []
+        for (index, pk) in table.primaryKey.enumerated() where index < placeholders.count {
+            conditions.append("\(quote(pk)) = \(placeholders[index])")
+        }
+        return "SELECT \(cols) FROM \(table.qualifiedName(kind: kind)) WHERE " + conditions.joined(separator: " AND ")
+    }
+}
+
+public enum DraftRowRequirements: Sendable {
+    public static func missing(
+        columns: [SQLColumn],
+        values: [SQLValue],
+        primaryKey: [String]
+    ) -> [String] {
+        let pk = Set(primaryKey.map { $0.lowercased() })
+        var names: [String] = []
+        for (index, column) in columns.enumerated() {
+            if column.isNullable { continue }
+            if pk.contains(column.name.lowercased()) { continue }
+            let value = values.indices.contains(index) ? values[index] : .null
+            if isEmpty(value) {
+                names.append(column.name)
+            }
+        }
+        return names
+    }
+
+    private static func isEmpty(_ value: SQLValue) -> Bool {
+        switch value {
+        case .null: true
+        case .string(let text): text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        default: false
+        }
+    }
+}
+
+public enum MutationRowIndex: Sendable {
+    public static func afterDelete(_ row: Int, deleted: Int) -> Int? {
+        if row == deleted { return nil }
+        if row > deleted { return row - 1 }
+        return row
+    }
+
+    public static func afterInsert(_ row: Int, inserted: Int) -> Int {
+        row >= inserted ? row + 1 : row
     }
 }
 
