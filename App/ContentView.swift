@@ -69,6 +69,20 @@ struct ContentView: View {
         }
         .tint(SexiQLColors.chromeTint(model.document.settings.tintName, scheme: colorScheme))
         .confirmationDialog(
+            deleteDialogTitle,
+            isPresented: pendingDeleteBinding,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                model.confirmPendingDelete()
+            }
+            Button("Cancel", role: .cancel) {
+                model.cancelPendingDelete()
+            }
+        } message: {
+            Text("This cannot be undone from the database unless you use Undo immediately.")
+        }
+        .confirmationDialog(
             "Disconnect \(model.pendingDisconnect?.name ?? "this connection")?",
             isPresented: pendingDisconnectBinding,
             titleVisibility: .visible
@@ -82,6 +96,18 @@ struct ContentView: View {
         } message: {
             Text("The live connection will be closed.")
         }
+    }
+
+    private var deleteDialogTitle: String {
+        let count = model.pendingDeleteRows?.rows.count ?? 0
+        return count == 1 ? "Delete this row?" : "Delete \(count) rows?"
+    }
+
+    private var pendingDeleteBinding: Binding<Bool> {
+        Binding(
+            get: { model.pendingDeleteRows != nil },
+            set: { if !$0 { model.cancelPendingDelete() } }
+        )
     }
 
     private var pendingDisconnectBinding: Binding<Bool> {
