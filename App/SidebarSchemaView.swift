@@ -64,15 +64,26 @@ struct SidebarSchemaView: View {
                         EmptyStateView(
                             title: model.schemaFilter.isEmpty ? "No tables" : "No matches",
                             subtitle: model.schemaFilter.isEmpty
-                                ? "This database has no tables or views yet."
+                                ? emptySchemaSubtitle(for: connection)
                                 : "No tables match “\(model.schemaFilter)”.",
                             systemImage: "tablecells.badge.ellipsis"
                         )
                     } else {
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 0) {
-                                ForEach(model.filteredSchemaObjects) { object in
-                                    schemaObjectRow(object)
+                                ForEach(model.schemaSections, id: \.schema) { section in
+                                    if !section.schema.isEmpty {
+                                        Text(section.schema)
+                                            .font(SexiQLType.meta)
+                                            .foregroundStyle(.secondary)
+                                            .textCase(.uppercase)
+                                            .padding(.horizontal, SexiQLSpace.sm)
+                                            .padding(.top, SexiQLSpace.md)
+                                            .padding(.bottom, 4)
+                                    }
+                                    ForEach(section.objects) { object in
+                                        schemaObjectRow(object, showSchema: section.schema.isEmpty)
+                                    }
                                 }
                             }
                             .padding(.horizontal, SexiQLSpace.sm)
@@ -102,8 +113,15 @@ struct SidebarSchemaView: View {
         }
     }
 
+    private func emptySchemaSubtitle(for connection: ConnectionProfile) -> String {
+        if connection.database.isEmpty {
+            return "No tables visible. Set a database name on this connection if you expected some."
+        }
+        return "No tables or views visible in “\(connection.database)”."
+    }
+
     @ViewBuilder
-    private func schemaObjectRow(_ object: SchemaObject) -> some View {
+    private func schemaObjectRow(_ object: SchemaObject, showSchema: Bool) -> some View {
         let expanded = model.schemaExpandedIDs.contains(object.id)
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: SexiQLSpace.xs) {
@@ -124,7 +142,7 @@ struct SidebarSchemaView: View {
                     HStack(spacing: SexiQLSpace.sm) {
                         Image(systemName: object.kind == .view ? "eye" : "tablecells")
                             .foregroundStyle(.secondary)
-                        Text(object.displayName)
+                        Text(showSchema ? object.displayName : object.name)
                             .font(SexiQLType.rowTitle)
                             .lineLimit(1)
                         Spacer(minLength: 0)
