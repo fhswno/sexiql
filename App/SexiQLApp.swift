@@ -67,6 +67,11 @@ struct SexiQLApp: App {
                 }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
                 .disabled(model.selectedTabID == nil)
+                Button("Generate with AI") {
+                    model.toggleEditorAIComposer()
+                }
+                .keyboardShortcut("k", modifiers: .command)
+                .disabled(model.selectedTabID == nil)
                 Button("Clear Results") {
                     if let tabID = model.selectedTabID {
                         model.cancelRun(tabID)
@@ -76,7 +81,7 @@ struct SexiQLApp: App {
                         model.clearAIExplain(tabID)
                     }
                 }
-                .keyboardShortcut("k", modifiers: .command)
+                .keyboardShortcut("k", modifiers: [.command, .shift])
                 .disabled(model.selectedTabID == nil)
                 Divider()
                 Button("Save Query…") {
@@ -99,13 +104,11 @@ struct SexiQLApp: App {
                     guard let tabID = model.selectedTabID else { return }
                     model.undoLastEdit(tabID: tabID, resultIndex: model.selectedResultIndex[tabID] ?? 0)
                 }
-                .keyboardShortcut("z", modifiers: .command)
                 .disabled(!model.canUndoCellEdit)
                 Button("Redo Cell Edit") {
                     guard let tabID = model.selectedTabID else { return }
                     model.redoLastEdit(tabID: tabID, resultIndex: model.selectedResultIndex[tabID] ?? 0)
                 }
-                .keyboardShortcut("z", modifiers: [.command, .shift])
                 .disabled(!model.canRedoCellEdit)
             }
 
