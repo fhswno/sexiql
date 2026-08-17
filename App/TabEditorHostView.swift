@@ -199,6 +199,45 @@ final class TabEditorHostView: NSView {
         tv.onNeedColumns = { [weak self] name in
             self?.onNeedColumns?(name)
         }
+        tv.onTextPublished = { [weak self] text in
+            guard let self else { return }
+            self.panes[id]?.publishedText = text
+            self.onTextChange?(id, text)
+        }
+    }
+
+    func beginAIInsert(tabID: UUID, replacing original: String? = nil) -> (start: Int, original: String)? {
+        guard let pane = panes[tabID] else { return nil }
+        window?.makeFirstResponder(pane.scrollView.editorTextView)
+        let tv = pane.scrollView.editorTextView
+        if let original, !original.isEmpty {
+            return tv.beginStreamingReplace(of: original)
+        }
+        return tv.beginStreamingInsert()
+    }
+
+    func applyAIInsert(tabID: UUID, start: Int, text: String) {
+        guard let pane = panes[tabID] else { return }
+        pane.scrollView.editorTextView.applyStreamingInsert(start: start, text: text)
+        pane.scrollView.tileDocument()
+    }
+
+    func finishAIInsert(tabID: UUID) {
+        panes[tabID]?.scrollView.editorTextView.finishStreamingInsert()
+        panes[tabID]?.scrollView.tileDocument()
+    }
+
+    func cancelAIInsert(tabID: UUID, start: Int, original: String) {
+        panes[tabID]?.scrollView.editorTextView.cancelStreamingInsert(start: start, original: original)
+        panes[tabID]?.scrollView.tileDocument()
+    }
+
+    func replaceStatement(tabID: UUID, original: String, with replacement: String) -> Bool {
+        guard let pane = panes[tabID] else { return false }
+        window?.makeFirstResponder(pane.scrollView.editorTextView)
+        let ok = pane.scrollView.editorTextView.replaceStatement(original, with: replacement)
+        pane.scrollView.tileDocument()
+        return ok
     }
 
     var activeTextView: SQLEditorTextView? {
