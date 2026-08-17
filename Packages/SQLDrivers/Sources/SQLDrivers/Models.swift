@@ -8,6 +8,7 @@ public struct SQLColumn: Sendable, Equatable {
     public var ordinal: Int
     public var tableName: String?
     public var tableOID: UInt32?
+    public var tableSchema: String?
 
     public init(
         name: String,
@@ -15,7 +16,8 @@ public struct SQLColumn: Sendable, Equatable {
         isNullable: Bool = true,
         ordinal: Int,
         tableName: String? = nil,
-        tableOID: UInt32? = nil
+        tableOID: UInt32? = nil,
+        tableSchema: String? = nil
     ) {
         self.name = name
         self.dataType = dataType
@@ -23,6 +25,7 @@ public struct SQLColumn: Sendable, Equatable {
         self.ordinal = ordinal
         self.tableName = tableName
         self.tableOID = tableOID
+        self.tableSchema = tableSchema
     }
 }
 
