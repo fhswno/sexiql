@@ -35,6 +35,20 @@ final class ResultSetModelTests: XCTestCase {
         XCTAssertEqual(model.rows.count, 0)
     }
 
+    func testInsertAndRemoveAfterComplete() {
+        var model = makeModel()
+        model.append(SQLRow(values: [.int(1), .string("a")]))
+        model.finish(totalRowCount: 1)
+        model.insertRow(SQLRow(values: [.int(2), .string("b")]), at: 1)
+        XCTAssertEqual(model.rows.count, 2)
+        XCTAssertEqual(model.totalRowCount, 2)
+        XCTAssertEqual(model[1, 1], .string("b"))
+        model.removeRow(at: 0)
+        XCTAssertEqual(model.rows.count, 1)
+        XCTAssertEqual(model[0, 0], .int(2))
+        XCTAssertEqual(model.totalRowCount, 1)
+    }
+
     func testDisplayRowsFilterAndSort() {
         var model = makeModel()
         model.append(SQLRow(values: [.int(2), .string("bob")]))
