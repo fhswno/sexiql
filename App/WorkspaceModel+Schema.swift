@@ -35,6 +35,8 @@ extension WorkspaceModel {
             var columns = schemaByProfile[profile.id]?.columns ?? [:]
             columns = columns.filter { valid.contains($0.key) }
             schemaByProfile[profile.id] = (objects, columns)
+            schemaIndexesByID = schemaIndexesByID.filter { valid.contains($0.key) }
+            schemaForeignKeysByID = schemaForeignKeysByID.filter { valid.contains($0.key) }
             if selectedConnectionID == profile.id || selectedTabConnectionID == profile.id {
                 applySchemaSnapshot(profile.id)
                 schemaExpandedIDs = schemaExpandedIDs.intersection(valid)
@@ -87,8 +89,9 @@ extension WorkspaceModel {
             return
         }
         schemaExpandedIDs.insert(object.id)
-        if schemaColumnsByID[object.id] == nil {
-            Task { await loadSchemaColumns(object) }
+        if schemaColumnsByID[object.id] == nil
+            || (object.kind == .table && schemaIndexesByID[object.id] == nil) {
+            Task { await loadSchemaDetails(object) }
         }
     }
 
@@ -97,6 +100,67 @@ extension WorkspaceModel {
         schemaObjects = snap.objects
         schemaTables = snap.objects.map(\.name)
         schemaColumnsByID = snap.columns
+        let valid = Set(snap.objects.map(\.id))
+        schemaIndexesByID = schemaIndexesByID.filter { valid.contains($0.key) }
+        schemaForeignKeysByID = schemaForeignKeysByID.filter { valid.contains($0.key) }
+    }
+
+    func loadSchemaDetails(_ object: SchemaObject, reportError: Bool = true, profileID: UUID? = nil) async {
+        await loadSchemaColumns(object, reportError: reportError, profileID: profileID)
+        guard object.kind == .table else {
+            schemaIndexesByID[object.id] = []
+            schemaForeignKeysByID[object.id] = []
+            return
+        }
+        await loadSchemaRelations(object, reportError: reportError, profileID: profileID)
+    }
+
+    func loadSchemaRelations(_ object: SchemaObject, reportError: Bool = true, profileID: UUID? = nil) async {
+        let id = profileID ?? selectedTabConnectionID ?? selectedConnectionID
+        guard let id,
+              let connection = await connectionManager.connection(for: id) else { return }
+        if busyProfileID != nil { return }
+        do {
+            let indexes = try await SchemaBrowser.listIndexes(on: connection, object: object)
+            let keys = try await SchemaBrowser.listForeignKeys(on: connection, object: object)
+            let columns = schemaColumnsByID[object.id]
+                ?? schemaByProfile[id]?.columns[object.id]
+                ?? []
+            if selectedConnectionID == id || selectedTabConnectionID == id {
+                schemaIndexesByID[object.id] = SchemaBrowser.ensuringPrimaryIndex(indexes, columns: columns)
+                schemaForeignKeysByID[object.id] = keys
+            }
+        } catch {
+            if reportError {
+                schemaError = error.localizedDescription
+            }
+            if schemaIndexesByID[object.id] == nil {
+                schemaIndexesByID[object.id] = []
+            }
+            if schemaForeignKeysByID[object.id] == nil {
+                schemaForeignKeysByID[object.id] = []
+            }
+        }
+    }
+
+    func openForeignKey(_ key: SchemaForeignKey) {
+        if let object = schemaObjects.first(where: {
+            if let schema = key.refSchema, !schema.isEmpty,
+               $0.schema?.caseInsensitiveCompare(schema) == .orderedSame,
+               $0.name.caseInsensitiveCompare(key.refTable) == .orderedSame {
+                return true
+            }
+            return $0.name.caseInsensitiveCompare(key.refTable) == .orderedSame
+                || $0.displayName.caseInsensitiveCompare(key.refTable) == .orderedSame
+        }) {
+            openSchemaObject(object)
+            return
+        }
+        if let schema = key.refSchema, !schema.isEmpty {
+            openSchemaObject(SchemaObject(schema: schema, name: key.refTable, kind: .table))
+            return
+        }
+        openTable(key.refTable)
     }
 
     func loadSchemaColumns(_ object: SchemaObject, reportError: Bool = true, profileID: UUID? = nil) async {
