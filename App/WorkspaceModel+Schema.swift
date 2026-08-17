@@ -11,9 +11,19 @@ extension WorkspaceModel {
     // MARK: - Schema browsing
 
     func loadSchema(for profile: ConnectionProfile) async {
-        guard let connection = await connectionManager.connection(for: profile.id) else { return }
+        guard let connection = await connectionManager.connection(for: profile.id) else {
+            if selectedConnectionID == profile.id {
+                schemaError = "Not connected."
+            }
+            return
+        }
         if busyProfileID != nil {
-            schemaError = "A query is running. Stop it before refreshing schema."
+            if let snap = schemaByProfile[profile.id],
+               selectedConnectionID == profile.id || selectedTabConnectionID == profile.id {
+                applySchemaSnapshot(profile.id)
+            } else if selectedConnectionID == profile.id {
+                schemaError = "A query is running. Stop it before refreshing schema."
+            }
             return
         }
         isSchemaLoading = true
@@ -29,6 +39,12 @@ extension WorkspaceModel {
                 applySchemaSnapshot(profile.id)
                 schemaExpandedIDs = schemaExpandedIDs.intersection(valid)
             }
+            if profile.kind == .postgres {
+                let schemas = objects.compactMap(\.schema)
+                if let sql = SchemaBrowser.searchPathSQL(schemas: schemas) {
+                    _ = try? await connection.execute(sql)
+                }
+            }
             startColumnPrefetch(prioritize: prioritizedTableNames(), profileID: profile.id)
         } catch {
             if selectedConnectionID == profile.id {
@@ -37,6 +53,17 @@ extension WorkspaceModel {
                 schemaError = error.localizedDescription
             }
         }
+    }
+
+    var schemaSections: [(schema: String, objects: [SchemaObject])] {
+        var order: [String] = []
+        var groups: [String: [SchemaObject]] = [:]
+        for object in filteredSchemaObjects {
+            let key = object.schema?.isEmpty == false ? object.schema! : ""
+            if groups[key] == nil { order.append(key) }
+            groups[key, default: []].append(object)
+        }
+        return order.map { ($0, groups[$0] ?? []) }
     }
 
     func refreshSchema() {
