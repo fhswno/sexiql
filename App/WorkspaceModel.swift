@@ -28,6 +28,8 @@ final class WorkspaceModel {
     var schemaTables: [String] = []
     var schemaObjects: [SchemaObject] = []
     var schemaColumnsByID: [String: [SchemaColumn]] = [:]
+    var schemaIndexesByID: [String: [SchemaIndex]] = [:]
+    var schemaForeignKeysByID: [String: [SchemaForeignKey]] = [:]
     var schemaExpandedIDs: Set<String> = []
     var schemaByProfile: [UUID: (objects: [SchemaObject], columns: [String: [SchemaColumn]])] = [:]
     var schemaFilter: String = ""
