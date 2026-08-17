@@ -268,7 +268,7 @@ extension WorkspaceModel {
                             state.message = n > 0 ? "Cancelled — \(n) row\(n == 1 ? "" : "s")" : "Cancelled"
                         } else {
                             state.status = .failed
-                            state.message = error.localizedDescription
+                            state.message = annotatedQueryError(error, profileID: profileID)
                         }
                         state.duration = Date().timeIntervalSince(start)
                         markRemainingCancelled(states, after: index)
@@ -317,13 +317,34 @@ extension WorkspaceModel {
                     state.message = "Cancelled"
                 } else {
                     state.status = .failed
-                    state.message = error.localizedDescription
+                    state.message = annotatedQueryError(error, profileID: profileID)
                 }
                 state.duration = Date().timeIntervalSince(start)
                 markRemainingCancelled(states, after: index)
                 return
             }
         }
+    }
+
+    func annotatedQueryError(_ error: Error, profileID: UUID) -> String {
+        let text = error.localizedDescription
+        guard let pg = error as? PGError, pg.code == "42P01" else { return text }
+        let name = missingRelationName(in: pg.message)
+        guard let name else { return text }
+        let objects = schemaByProfile[profileID]?.objects ?? schemaObjects
+        let matches = objects.filter { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+        guard !matches.isEmpty else { return text }
+        let qualified = matches.map(\.displayName).joined(separator: ", ")
+        return text + "\nHint: qualify as \(qualified)"
+    }
+
+    func missingRelationName(in message: String) -> String? {
+        guard let start = message.firstIndex(of: "\""),
+              let end = message[message.index(after: start)...].firstIndex(of: "\"") else {
+            return nil
+        }
+        let name = String(message[message.index(after: start)..<end])
+        return name.isEmpty ? nil : name
     }
 
     static func statementChangesSchema(_ sql: String) -> Bool {
