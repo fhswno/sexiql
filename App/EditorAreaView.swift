@@ -13,8 +13,13 @@ struct EditorAreaView: View {
         VStack(spacing: 0) {
             tabBar
             Divider()
+            if model.editorAIComposerVisible {
+                EditorAIComposerBar()
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
             tabContent
         }
+        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: model.editorAIComposerVisible)
         .onChange(of: model.pendingTabRenameID) { _, newValue in
             guard let newValue else { return }
             beginRename(newValue)
@@ -77,6 +82,18 @@ struct EditorAreaView: View {
                         model.showFindInEditor = { [weak host] in
                             host?.window?.makeFirstResponder(host?.activeTextView)
                             host?.activeTextView?.showFindBar()
+                        }
+                        model.editorAIInsert = { [weak host] tabID, replacing in
+                            host?.beginAIInsert(tabID: tabID, replacing: replacing)
+                        }
+                        model.editorAIApply = { [weak host] tabID, start, text in
+                            host?.applyAIInsert(tabID: tabID, start: start, text: text)
+                        }
+                        model.editorAIFinish = { [weak host] tabID in
+                            host?.finishAIInsert(tabID: tabID)
+                        }
+                        model.editorAICancelInsert = { [weak host] tabID, start, original in
+                            host?.cancelAIInsert(tabID: tabID, start: start, original: original)
                         }
                     }
                 )
