@@ -92,10 +92,7 @@ extension WorkspaceModel {
                     }
                     self.persistSessionToDisk()
                 }
-                let shouldLoad = await MainActor.run { self.selectedConnectionID == profile.id }
-                if shouldLoad {
-                    await self.loadSchema(for: profile)
-                }
+                await self.loadSchema(for: profile)
             } catch is CancellationError {
                 await MainActor.run {
                     self.connectionStatuses[profile.id] = .disconnected
