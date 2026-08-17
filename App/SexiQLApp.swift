@@ -100,6 +100,15 @@ struct SexiQLApp: App {
                 }
                 .keyboardShortcut("c", modifiers: .command)
                 .disabled(!model.canCopySelectedRows)
+                Button("Add Row") {
+                    model.addResultRowHandler?()
+                }
+                .disabled(!model.canAddResultRow)
+                Button("Delete Rows") {
+                    model.deleteResultRowsHandler?()
+                }
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(!model.canDeleteResultRows)
                 Button("Undo Cell Edit") {
                     guard let tabID = model.selectedTabID else { return }
                     model.undoLastEdit(tabID: tabID, resultIndex: model.selectedResultIndex[tabID] ?? 0)
