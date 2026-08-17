@@ -316,13 +316,22 @@ public struct MySQLHandshake: Sendable, Equatable {
 public struct MySQLColumnDefinition: Sendable, Equatable {
     public var name: String
     public var tableName: String?
+    public var schema: String?
     public var type: UInt8
     public var flags: UInt16
     public var decimals: UInt8
 
-    public init(name: String, tableName: String?, type: UInt8, flags: UInt16, decimals: UInt8) {
+    public init(
+        name: String,
+        tableName: String?,
+        type: UInt8,
+        flags: UInt16,
+        decimals: UInt8,
+        schema: String? = nil
+    ) {
         self.name = name
         self.tableName = tableName
+        self.schema = schema
         self.type = type
         self.flags = flags
         self.decimals = decimals
@@ -331,9 +340,9 @@ public struct MySQLColumnDefinition: Sendable, Equatable {
     public static func parse(_ payload: Data) throws -> MySQLColumnDefinition {
         var reader = MySQLByteReader(data: payload)
         _ = try reader.readLengthEncodedString()
-        _ = try reader.readLengthEncodedString()
-        let table = try reader.readLengthEncodedString()
-        _ = try reader.readLengthEncodedString()
+        let schema = emptyToNil(try reader.readLengthEncodedString())
+        let table = emptyToNil(try reader.readLengthEncodedString())
+        let orgTable = emptyToNil(try reader.readLengthEncodedString())
         let name = try reader.readLengthEncodedString() ?? ""
         _ = try reader.readLengthEncodedString()
         let fixedLength = try reader.readUInt8()
@@ -344,7 +353,19 @@ public struct MySQLColumnDefinition: Sendable, Equatable {
         let flags = try reader.readUInt16()
         let decimals = try reader.readUInt8()
         _ = try reader.readBytes(2)
-        return MySQLColumnDefinition(name: name, tableName: table, type: type, flags: flags, decimals: decimals)
+        return MySQLColumnDefinition(
+            name: name,
+            tableName: orgTable ?? table,
+            type: type,
+            flags: flags,
+            decimals: decimals,
+            schema: schema
+        )
+    }
+
+    private static func emptyToNil(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        return value
     }
 }
 
