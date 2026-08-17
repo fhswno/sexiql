@@ -64,7 +64,18 @@ final class WorkspaceModel {
     var showingAISetup = false
     var aiSetupReason: AISetupReason?
 
-    var pendingAIExplain: (tabID: UUID, sql: String?)?
+    var pendingAIWork: PendingAIWork?
+    var editorAIComposerVisible = false
+    var editorAIPrompt = ""
+    var editorAIBusy = false
+    var editorAIStatus: String?
+    var editorAIInsert: ((UUID, String?) -> (start: Int, original: String)?)?
+    var editorAIApply: ((UUID, Int, String) -> Void)?
+    var editorAIFinish: ((UUID) -> Void)?
+    var editorAICancelInsert: ((UUID, Int, String) -> Void)?
+    var editorAIReplaceStatement: ((UUID, String, String) -> Bool)?
+    var editorAITask: Task<Void, Never>?
+    var editorAIRaw = ""
     var ollamaModels: [String] = []
     var ollamaModelsError: String?
     var isLoadingOllamaModels = false
