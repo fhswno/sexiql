@@ -79,6 +79,24 @@ struct ResultsPaneView: View {
                         }
                         .buttonStyle(.plain)
                         .help(result.label)
+                        .contextMenu {
+                            if result.status == .failed {
+                                Button("Fix with AI") {
+                                    model.fixSQLWithAI(
+                                        tabID: tabID,
+                                        sql: result.label,
+                                        error: result.message ?? "Query failed"
+                                    )
+                                }
+                                Button("Ask in chat") {
+                                    model.askAboutFailedSQL(
+                                        tabID: tabID,
+                                        sql: result.label,
+                                        error: result.message ?? "Query failed"
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, SexiQLSpace.md)
@@ -178,7 +196,21 @@ struct ResultsPaneView: View {
                 QueryErrorView(
                     title: "Query failed",
                     message: result.message ?? "Query failed",
-                    detailSQL: result.label
+                    detailSQL: result.label,
+                    onFix: {
+                        model.fixSQLWithAI(
+                            tabID: tabID,
+                            sql: result.label,
+                            error: result.message ?? "Query failed"
+                        )
+                    },
+                    onAsk: {
+                        model.askAboutFailedSQL(
+                            tabID: tabID,
+                            sql: result.label,
+                            error: result.message ?? "Query failed"
+                        )
+                    }
                 )
             }
         }
@@ -377,6 +409,8 @@ private struct QueryErrorView: View {
     let message: String
     var detailSQL: String? = nil
     var onDismiss: (() -> Void)? = nil
+    var onFix: (() -> Void)? = nil
+    var onAsk: (() -> Void)? = nil
 
     @State private var copied = false
 
@@ -436,6 +470,16 @@ private struct QueryErrorView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                if let onFix {
+                    Button("Fix with AI", action: onFix)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                }
+                if let onAsk {
+                    Button("Ask in chat", action: onAsk)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
                 if let onDismiss {
                     Button("Dismiss", action: onDismiss)
                         .buttonStyle(.borderless)
