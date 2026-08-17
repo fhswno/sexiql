@@ -5,6 +5,7 @@ public final class SQLEditorTextView: NSTextView {
     public var onSaveQuery: ((String) -> Void)?
     public var completionCatalog: (() -> SQLCompletionCatalog)?
     public var onNeedColumns: ((String) -> Void)?
+    public var onTextPublished: ((String) -> Void)?
 
     public let gutterView = LineNumberGutterView(frame: .zero)
 
@@ -19,6 +20,7 @@ public final class SQLEditorTextView: NSTextView {
     private let completion = SQLCompletionWindow()
     private var completionReplaceRange = NSRange(location: 0, length: 0)
     private var suppressCompletion = false
+    private var streamingLength = 0
 
     public init() {
         super.init(frame: .zero)
@@ -403,6 +405,121 @@ public final class SQLEditorTextView: NSTextView {
         setSelectedRange(NSRange(location: loc, length: 0))
         scheduleHighlight(delay: 0)
         completion.hide()
+    }
+
+    public func beginStreamingReplace(of original: String) -> (start: Int, original: String) {
+        let ns = string as NSString
+        let found = ns.range(of: original)
+        if found.location != NSNotFound {
+            completion.hide()
+            suppressCompletion = true
+            undoManager?.beginUndoGrouping()
+            if shouldChangeText(in: found, replacementString: "") {
+                replaceCharacters(in: found, with: "")
+                didChangeText()
+            }
+            streamingLength = 0
+            setSelectedRange(NSRange(location: found.location, length: 0))
+            return (found.location, original)
+        }
+        return beginStreamingInsert()
+    }
+
+    public func beginStreamingInsert() -> (start: Int, original: String) {
+        completion.hide()
+        suppressCompletion = true
+        streamingLength = 0
+        let sel = selectedRange()
+        let ns = string as NSString
+        let range: NSRange
+        if sel.length > 0, sel.location != NSNotFound,
+           sel.location >= 0, sel.location + sel.length <= ns.length {
+            range = sel
+        } else {
+            let loc = min(max(sel.location, 0), ns.length)
+            range = NSRange(location: loc, length: 0)
+        }
+        let original = ns.substring(with: range)
+        undoManager?.beginUndoGrouping()
+        if shouldChangeText(in: range, replacementString: "") {
+            replaceCharacters(in: range, with: "")
+            didChangeText()
+        }
+        setSelectedRange(NSRange(location: range.location, length: 0))
+        return (range.location, original)
+    }
+
+    public func applyStreamingInsert(start: Int, text: String) {
+        let ns = string as NSString
+        let loc = min(max(start, 0), ns.length)
+        let length = min(streamingLength, max(0, ns.length - loc))
+        let range = NSRange(location: loc, length: length)
+        if shouldChangeText(in: range, replacementString: text) {
+            replaceCharacters(in: range, with: text)
+            didChangeText()
+        }
+        streamingLength = (text as NSString).length
+        let end = loc + streamingLength
+        setSelectedRange(NSRange(location: end, length: 0))
+        scheduleHighlight(delay: 0.08)
+        onTextPublished?(string)
+    }
+
+    public func finishStreamingInsert() {
+        undoManager?.endUndoGrouping()
+        suppressCompletion = false
+        streamingLength = 0
+        scheduleHighlight(delay: 0)
+        onTextPublished?(string)
+    }
+
+    public func cancelStreamingInsert(start: Int, original: String) {
+        let ns = string as NSString
+        let loc = min(max(start, 0), ns.length)
+        let length = min(streamingLength, max(0, ns.length - loc))
+        let range = NSRange(location: loc, length: length)
+        if shouldChangeText(in: range, replacementString: original) {
+            replaceCharacters(in: range, with: original)
+            didChangeText()
+        }
+        setSelectedRange(NSRange(location: loc + (original as NSString).length, length: 0))
+        undoManager?.endUndoGrouping()
+        suppressCompletion = false
+        streamingLength = 0
+        scheduleHighlight(delay: 0)
+        onTextPublished?(string)
+    }
+
+    public func replaceStatement(_ original: String, with replacement: String) -> Bool {
+        let ns = string as NSString
+        let range = ns.range(of: original)
+        guard range.location != NSNotFound else {
+            return insertAtCaret(replacement)
+        }
+        undoManager?.beginUndoGrouping()
+        if shouldChangeText(in: range, replacementString: replacement) {
+            replaceCharacters(in: range, with: replacement)
+            didChangeText()
+        }
+        setSelectedRange(NSRange(location: range.location, length: (replacement as NSString).length))
+        undoManager?.endUndoGrouping()
+        scheduleHighlight(delay: 0)
+        onTextPublished?(string)
+        return true
+    }
+
+    public func insertAtCaret(_ text: String) -> Bool {
+        let range = selectedRange()
+        undoManager?.beginUndoGrouping()
+        if shouldChangeText(in: range, replacementString: text) {
+            replaceCharacters(in: range, with: text)
+            didChangeText()
+        }
+        setSelectedRange(NSRange(location: range.location + (text as NSString).length, length: 0))
+        undoManager?.endUndoGrouping()
+        scheduleHighlight(delay: 0)
+        onTextPublished?(string)
+        return true
     }
 
     public func formatActiveSnippet() {
