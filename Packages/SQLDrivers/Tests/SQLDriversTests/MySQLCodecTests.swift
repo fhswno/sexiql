@@ -49,6 +49,32 @@ final class MySQLCodecTests: XCTestCase {
         XCTAssertEqual(payload[bitmapIndex] & 0x02, 0)
     }
 
+    func testColumnDefinitionPrefersOrgTable() throws {
+        var payload = Data()
+        payload.append(MySQLWire.lengthEncoded("def"))
+        payload.append(MySQLWire.lengthEncoded("app"))
+        payload.append(MySQLWire.lengthEncoded("u"))
+        payload.append(MySQLWire.lengthEncoded("users"))
+        payload.append(MySQLWire.lengthEncoded("ident"))
+        payload.append(MySQLWire.lengthEncoded("id"))
+        payload.append(0x0c)
+        payload.append(contentsOf: [0, 0, 0, 0])
+        payload.append(contentsOf: [0, 0, 0, 0])
+        payload.append(MySQLColumnType.longLong)
+        payload.append(contentsOf: [0, 0])
+        payload.append(0)
+        payload.append(contentsOf: [0, 0])
+
+        let definition = try MySQLColumnDefinition.parse(payload)
+        XCTAssertEqual(definition.name, "ident")
+        XCTAssertEqual(definition.tableName, "users")
+        XCTAssertEqual(definition.schema, "app")
+
+        let columns = MySQLRowCodec.columns(from: [definition])
+        XCTAssertEqual(columns.first?.tableName, "users")
+        XCTAssertEqual(columns.first?.tableSchema, "app")
+    }
+
     func testCommandConstants() {
         XCTAssertEqual(MySQLPrepared.comQuery, 0x03)
         XCTAssertEqual(MySQLPrepared.comStmtPrepare, 0x16)
