@@ -30,4 +30,24 @@ final class SchemaBrowserTests: XCTestCase {
         let packet = PGWire.cancelRequest(processID: 42, secretKey: 99)
         XCTAssertEqual(packet.count, 16)
     }
+
+    func testParsesPostgresSchemaRows() {
+        let rows = [
+            SQLRow(values: [.string("app"), .string("s3_iam_connections"), .string("BASE TABLE")]),
+            SQLRow(values: [.string("public"), .string("users"), .string("VIEW")]),
+        ]
+        let objects = SchemaBrowser.objects(
+            from: QueryResult(columns: [], rows: rows),
+            kind: .postgres
+        )
+        XCTAssertEqual(objects.map(\.displayName), ["app.s3_iam_connections", "public.users"])
+        XCTAssertEqual(objects[0].kind, .table)
+        XCTAssertEqual(objects[1].kind, .view)
+    }
+
+    func testSearchPathSQLQuotesSchemas() {
+        let sql = SchemaBrowser.searchPathSQL(schemas: ["public", "app", "public"])
+        XCTAssertEqual(sql, "SET search_path TO \"$user\", \"public\", \"app\"")
+        XCTAssertNil(SchemaBrowser.searchPathSQL(schemas: []))
+    }
 }
