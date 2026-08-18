@@ -4,13 +4,14 @@ enum PGRowCodec: Sendable {
     static func parseRowDescription(_ payload: Data) throws -> [SQLColumn] {
         var reader = PGByteReader(data: payload)
         let count = Int(try reader.readInt16())
+        guard count >= 0 else { throw PGWireError.invalidMessage }
         var columns: [SQLColumn] = []
         columns.reserveCapacity(count)
         for index in 0..<count {
             let name = try reader.readCString()
-            let tableOID = UInt32(try reader.readInt32())
+            let tableOID = try reader.readUInt32()
             _ = try reader.readInt16()
-            let typeOID = UInt32(try reader.readInt32())
+            let typeOID = try reader.readUInt32()
             _ = try reader.readInt16()
             _ = try reader.readInt32()
             _ = try reader.readInt16()
@@ -35,6 +36,8 @@ enum PGRowCodec: Sendable {
             let length = try reader.readInt32()
             if length == -1 {
                 values.append(.null)
+            } else if length < 0 {
+                throw PGWireError.invalidMessage
             } else {
                 let bytes = try reader.readBytes(Int(length))
                 let text = try readerString(bytes)
