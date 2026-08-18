@@ -37,6 +37,8 @@ extension WorkspaceModel {
                     explainSQL = "EXPLAIN FORMAT=JSON \(sql)"
                 case .sqlite:
                     explainSQL = "EXPLAIN QUERY PLAN \(sql)"
+                case .redis:
+                    throw SQLDriverError.notImplemented(feature: "Explain is not available for Redis")
                 }
                 let result = try await connection.execute(explainSQL)
                 let parser = ExplainParser()
@@ -90,7 +92,13 @@ extension WorkspaceModel {
         }
 
         let text = resolveSQLToRun(tabID: tabID, override: overrideSQL)
-        let statements = SQLStatementSplitter().split(text)
+        let kind = document.connections.first(where: { $0.id == profileID })?.kind
+        let statements: [SQLStatement]
+        if kind == .redis {
+            statements = RedisCommand.splitStatements(text).map { SQLStatement(text: $0) }
+        } else {
+            statements = SQLStatementSplitter().split(text)
+        }
         guard !statements.isEmpty else { return }
 
         explainPlans[tabID] = nil
@@ -123,13 +131,7 @@ extension WorkspaceModel {
                 }
             }
             if hadInFlight {
-                if let connection = await self.connectionManager.connection(for: profileID) {
-                    await connection.cancelInFlight()
-                }
-                try? await self.connectionManager.disconnect(profileID)
-                if let profile = self.document.connections.first(where: { $0.id == profileID }) {
-                    self.connect(profile)
-                }
+                await self.cancelInFlightAndReconnectIfNeeded(profileID)
             }
             guard !Task.isCancelled else { return }
             await self.executeStatements(
@@ -160,19 +162,26 @@ extension WorkspaceModel {
         if invokeDriverCancel, let profileID {
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                if let connection = await self.connectionManager.connection(for: profileID) {
-                    await connection.cancelInFlight()
-                }
+                await self.cancelInFlightAndReconnectIfNeeded(profileID)
                 if self.busyProfileID == profileID {
                     self.busyProfileID = nil
-                }
-                try? await self.connectionManager.disconnect(profileID)
-                if let profile = self.document.connections.first(where: { $0.id == profileID }) {
-                    self.connect(profile)
                 }
             }
         } else if busyProfileID != nil, runTasks.isEmpty {
             busyProfileID = nil
+        }
+    }
+
+    private func cancelInFlightAndReconnectIfNeeded(_ profileID: UUID) async {
+        if let connection = await connectionManager.connection(for: profileID) {
+            await connection.cancelInFlight()
+            if await connection.isConnected() {
+                return
+            }
+        }
+        try? await connectionManager.disconnect(profileID)
+        if let profile = document.connections.first(where: { $0.id == profileID }) {
+            connect(profile)
         }
     }
 
@@ -237,11 +246,17 @@ extension WorkspaceModel {
                         state.message = "Not connected"
                         return
                     }
-                    let guarded = SQLLimitGuard().apply(statement.text)
+                    let kind = document.connections.first(where: { $0.id == profileID })?.kind
+                    let guarded: SQLLimitGuard.Outcome
+                    if kind == .redis {
+                        guarded = SQLLimitGuard.Outcome(sql: statement.text, didLimit: false)
+                    } else {
+                        guarded = SQLLimitGuard().apply(statement.text)
+                    }
                     if guarded.didLimit {
                         state.appliedLimit = SQLLimitGuard.defaultLimit
                     }
-                    if SQLStreamability.isStreamable(statement.text) {
+                    if kind != .redis, SQLStreamability.isStreamable(statement.text) {
                         state.status = .streaming
                         let streamed = try await connection.stream(guarded.sql)
                         state.sqlColumns = streamed.columns
@@ -359,8 +374,12 @@ extension WorkspaceModel {
 
     static func statementChangesSchema(_ sql: String) -> Bool {
         let head = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        for prefix in ["CREATE", "ALTER", "DROP", "RENAME"] {
-            if head.hasPrefix(prefix) { return true }
+        for prefix in ["CREATE", "ALTER", "DROP", "RENAME", "DEL", "UNLINK", "SET", "HSET", "HDEL",
+                       "SADD", "SREM", "ZADD", "ZREM", "LPUSH", "RPUSH", "LSET", "FLUSHDB", "FLUSHALL"] {
+            if head.hasPrefix(prefix) && (head.count == prefix.count || head[head.index(head.startIndex, offsetBy: prefix.count)].isWhitespace) {
+                return true
+            }
+            if head.hasPrefix(prefix + " ") { return true }
         }
         return false
     }
