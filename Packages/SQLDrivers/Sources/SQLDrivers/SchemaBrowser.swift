@@ -4,6 +4,7 @@ import SQLCore
 public enum SchemaObjectKind: String, Sendable, Hashable, CaseIterable {
     case table
     case view
+    case key
 }
 
 public struct SchemaObject: Sendable, Hashable, Identifiable {
@@ -49,6 +50,8 @@ public enum SchemaBrowser: Sendable {
         let kind = connection.profile.kind
         let sql: String
         switch kind {
+        case .redis:
+            return try await redisObjects(connection)
         case .sqlite:
             sql = """
             SELECT name, type FROM sqlite_master
@@ -113,6 +116,8 @@ public enum SchemaBrowser: Sendable {
             return try await postgresColumns(connection, object: object)
         case .mysql:
             return try await mysqlColumns(connection, object: object)
+        case .redis:
+            return try await redisColumns(connection, object: object)
         }
     }
 
@@ -124,6 +129,8 @@ public enum SchemaBrowser: Sendable {
         case .postgres, .sqlite:
             let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
             return "\"\(escaped)\""
+        case .redis:
+            return RedisCommand.quote(name)
         }
     }
 
@@ -134,13 +141,20 @@ public enum SchemaBrowser: Sendable {
     }
 
     public static func selectAllSQL(_ object: SchemaObject, kind: DatabaseKind, limit: Int = 1000) -> String {
-        "SELECT * FROM \(qualify(object, kind: kind)) LIMIT \(limit);"
+        if kind == .redis {
+            return RedisResultGrid.keyLoadCommand(type: object.schema ?? "string", key: object.name)
+        }
+        return "SELECT * FROM \(qualify(object, kind: kind)) LIMIT \(limit);"
     }
 
     // MARK: - Private
 
     private static func parseObjectRow(_ row: SQLRow, kind: DatabaseKind) -> SchemaObject? {
         switch kind {
+        case .redis:
+            guard let name = row.values.first?.text, !name.isEmpty else { return nil }
+            let type = row.values.count > 1 ? (row.values[1].text ?? "string") : "string"
+            return SchemaObject(schema: type, name: name, kind: .key)
         case .sqlite:
             guard row.values.count >= 2, let name = row.values[0].text, !name.isEmpty else { return nil }
             let typeStr = row.values[1].text?.lowercased() ?? "table"
@@ -153,6 +167,50 @@ public enum SchemaBrowser: Sendable {
             let typeStr = row.values[2].text?.uppercased() ?? "BASE TABLE"
             let objKind: SchemaObjectKind = typeStr.contains("VIEW") ? .view : .table
             return SchemaObject(schema: schema, name: name, kind: objKind)
+        }
+    }
+
+    private static func redisObjects(_ connection: any DatabaseConnection) async throws -> [SchemaObject] {
+        guard let redis = connection as? RedisConnection else { return [] }
+        let keys = try await redis.scanKeys()
+        return keys.map { SchemaObject(schema: $0.type, name: $0.key, kind: .key) }
+    }
+
+    private static func redisColumns(
+        _ connection: any DatabaseConnection,
+        object: SchemaObject
+    ) async throws -> [SchemaColumn] {
+        let type: String
+        var ttlLabel = ""
+        if let redis = connection as? RedisConnection {
+            let info = try await redis.keyTypeAndTTL(object.name)
+            type = info.type
+            if info.ttl >= 0 {
+                ttlLabel = " ttl=\(info.ttl)"
+            }
+        } else {
+            type = object.schema ?? "string"
+        }
+        switch type.lowercased() {
+        case "hash":
+            return [
+                SchemaColumn(name: "field", dataType: "bulk", isPrimaryKey: true, isNullable: false),
+                SchemaColumn(name: "value", dataType: "bulk\(ttlLabel)", isPrimaryKey: false, isNullable: true),
+            ]
+        case "list":
+            return [
+                SchemaColumn(name: "index", dataType: "integer", isPrimaryKey: true, isNullable: false),
+                SchemaColumn(name: "value", dataType: "bulk\(ttlLabel)", isPrimaryKey: false, isNullable: true),
+            ]
+        case "set":
+            return [SchemaColumn(name: "member", dataType: "bulk\(ttlLabel)", isPrimaryKey: true, isNullable: false)]
+        case "zset":
+            return [
+                SchemaColumn(name: "member", dataType: "bulk", isPrimaryKey: true, isNullable: false),
+                SchemaColumn(name: "score", dataType: "bulk\(ttlLabel)", isPrimaryKey: false, isNullable: true),
+            ]
+        default:
+            return [SchemaColumn(name: "value", dataType: "\(type)\(ttlLabel)", isPrimaryKey: true, isNullable: true)]
         }
     }
 
