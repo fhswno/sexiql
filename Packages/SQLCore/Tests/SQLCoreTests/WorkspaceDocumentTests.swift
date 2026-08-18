@@ -92,6 +92,27 @@ final class WorkspaceDocumentTests: XCTestCase {
         XCTAssertEqual(ConnectionProfile(name: "Local", kind: .mysql).port, 3306)
         XCTAssertEqual(ConnectionProfile(name: "Local", kind: .sqlite).port, 0)
         XCTAssertEqual(ConnectionProfile(name: "Local", kind: .redis).port, 6379)
+        XCTAssertFalse(ConnectionProfile(name: "Local", kind: .postgres).readOnly)
+    }
+
+    func testProfileReadOnlyDecodesDefaultFalse() throws {
+        let profile = ConnectionProfile(name: "Prod", kind: .postgres, host: "db", readOnly: true)
+        let data = try JSONEncoder().encode(profile)
+        let decoded = try JSONDecoder().decode(ConnectionProfile.self, from: data)
+        XCTAssertTrue(decoded.readOnly)
+
+        struct Legacy: Encodable {
+            var id = UUID()
+            var name = "Old"
+            var kind = "postgres"
+            var host = "h"
+            var port = 5432
+            var database = "db"
+            var username = "u"
+        }
+        let legacy = try JSONEncoder().encode(Legacy())
+        let migrated = try JSONDecoder().decode(ConnectionProfile.self, from: legacy)
+        XCTAssertFalse(migrated.readOnly)
     }
 
     func testWorkspaceStoreRoundTrip() throws {
