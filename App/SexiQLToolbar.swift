@@ -70,7 +70,7 @@ struct SexiQLToolbar: ToolbarContent {
             } label: {
                 Label("Clear Results", systemImage: "trash")
             }
-            .help("Clear Results (⌘K)")
+            .help("Clear Results (⌘⇧K)")
             .disabled(model.selectedTabID == nil)
         }
 
