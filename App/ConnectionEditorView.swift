@@ -31,6 +31,12 @@ struct ConnectionEditorView: View {
                     }
                 }
                 .disabled(profile != nil)
+                .onChange(of: kind) { _, newKind in
+                    port = newKind.defaultPort == 0 ? "" : String(newKind.defaultPort)
+                    if newKind == .redis, tlsMode == .preferred {
+                        tlsMode = .off
+                    }
+                }
 
                 if kind == .sqlite {
                     TextField("Database file path", text: $database)
@@ -46,9 +52,9 @@ struct ConnectionEditorView: View {
                     }
                     HStack {
                         TextField("Port", text: $port)
-                        TextField("Database", text: $database)
+                        TextField(kind == .redis ? "DB index (0)" : "Database", text: $database)
                     }
-                    TextField("Username", text: $username)
+                    TextField(kind == .redis ? "ACL username (optional)" : "Username", text: $username)
                     SecureField("Password", text: $password)
                     Picker("TLS", selection: $tlsMode) {
                         Text("Off").tag(TLSMode.off)
@@ -97,7 +103,8 @@ struct ConnectionEditorView: View {
     private var isValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
             && (!(kind == .sqlite) || !database.trimmingCharacters(in: .whitespaces).isEmpty)
-            && (kind == .sqlite || (!host.trimmingCharacters(in: .whitespaces).isEmpty && !username.isEmpty))
+            && (kind == .sqlite || !host.trimmingCharacters(in: .whitespaces).isEmpty)
+            && (kind == .sqlite || kind == .redis || !username.isEmpty)
             && (!useSSH || (!sshHost.isEmpty && !sshUsername.isEmpty))
     }
 
