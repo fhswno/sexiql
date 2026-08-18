@@ -6,6 +6,13 @@ public final class SQLEditorTextView: NSTextView {
     public var completionCatalog: (() -> SQLCompletionCatalog)?
     public var onNeedColumns: ((String) -> Void)?
     public var onTextPublished: ((String) -> Void)?
+    public var dialect: EditorDialect = .sql {
+        didSet {
+            if oldValue != dialect {
+                scheduleHighlight(delay: 0)
+            }
+        }
+    }
 
     public let gutterView = LineNumberGutterView(frame: .zero)
 
@@ -236,7 +243,7 @@ public final class SQLEditorTextView: NSTextView {
 
         let text = string
         if !text.isEmpty {
-            let tokens = SQLLexer().tokenize(text)
+            let tokens = SQLLexer(dialect: dialect).tokenize(text)
             let baseAttributes = Self.baseTypingAttributes(layoutManager: layoutManager)
 
             textStorage.beginEditing()
@@ -378,7 +385,8 @@ public final class SQLEditorTextView: NSTextView {
             sql: string,
             cursor: cursor,
             catalog: catalog,
-            force: force
+            force: force,
+            dialect: dialect
         )
         completionReplaceRange = result.replaceRange
         if let qualifier = result.pendingQualifier {
@@ -535,7 +543,7 @@ public final class SQLEditorTextView: NSTextView {
             range = NSRange(location: 0, length: full.length)
         }
         let source = full.substring(with: range)
-        let formatted = SQLFormatter().format(source)
+        let formatted = SQLFormatter().format(source, dialect: dialect)
         guard formatted != source else { return }
         suppressCompletion = true
         if shouldChangeText(in: range, replacementString: formatted) {
@@ -580,8 +588,10 @@ public final class SQLEditorTextView: NSTextView {
             block = NSRange(location: start, length: max(0, end - start))
         }
 
+        let commentPrefix = dialect == .redis ? "# " : "-- "
+
         if full.length == 0 {
-            let insertion = "-- "
+            let insertion = commentPrefix
             if shouldChangeText(in: NSRange(location: 0, length: 0), replacementString: insertion) {
                 textStorage.replaceCharacters(in: NSRange(location: 0, length: 0), with: insertion)
                 didChangeText()
@@ -607,10 +617,11 @@ public final class SQLEditorTextView: NSTextView {
         }
         let targets = contentLines.isEmpty ? lineRanges : contentLines
 
+        let marker = dialect == .redis ? "#" : "--"
         let allCommented = targets.allSatisfy { range in
             let line = full.substring(with: range)
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            return trimmed.hasPrefix("--")
+            return trimmed.hasPrefix(marker)
         }
 
         var replacements: [(NSRange, String)] = []
@@ -623,18 +634,28 @@ public final class SQLEditorTextView: NSTextView {
                     if ch == 32 || ch == 9 { i += 1; continue }
                     break
                 }
-                guard i < line.length, line.character(at: i) == 45 else { continue }
-                var stripLen = 1
-                if i + 1 < line.length, line.character(at: i + 1) == 45 {
-                    stripLen = 2
-                    if i + 2 < line.length, line.character(at: i + 2) == 32 {
-                        stripLen = 3
+                if dialect == .redis {
+                    guard i < line.length, line.character(at: i) == 35 else { continue }
+                    var stripLen = 1
+                    if i + 1 < line.length, line.character(at: i + 1) == 32 {
+                        stripLen = 2
                     }
+                    let stripRange = NSRange(location: range.location + i, length: stripLen)
+                    replacements.append((stripRange, ""))
                 } else {
-                    continue
+                    guard i < line.length, line.character(at: i) == 45 else { continue }
+                    var stripLen = 1
+                    if i + 1 < line.length, line.character(at: i + 1) == 45 {
+                        stripLen = 2
+                        if i + 2 < line.length, line.character(at: i + 2) == 32 {
+                            stripLen = 3
+                        }
+                    } else {
+                        continue
+                    }
+                    let stripRange = NSRange(location: range.location + i, length: stripLen)
+                    replacements.append((stripRange, ""))
                 }
-                let stripRange = NSRange(location: range.location + i, length: stripLen)
-                replacements.append((stripRange, ""))
             } else {
                 var i = 0
                 while i < line.length {
@@ -643,7 +664,7 @@ public final class SQLEditorTextView: NSTextView {
                     break
                 }
                 let insertAt = NSRange(location: range.location + i, length: 0)
-                replacements.append((insertAt, "-- "))
+                replacements.append((insertAt, commentPrefix))
             }
         }
 
