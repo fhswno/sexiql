@@ -17,7 +17,7 @@ extension WorkspaceModel {
             }
             return
         }
-        if busyProfileID != nil {
+        if isProfileBusy(profile.id) {
             if let snap = schemaByProfile[profile.id],
                selectedConnectionID == profile.id || selectedTabConnectionID == profile.id {
                 applySchemaSnapshot(profile.id)
@@ -28,9 +28,22 @@ extension WorkspaceModel {
         }
         isSchemaLoading = true
         schemaError = nil
+        if selectedConnectionID == profile.id || selectedTabConnectionID == profile.id {
+            schemaNotice = nil
+        }
         defer { isSchemaLoading = false }
         do {
-            let objects = try await SchemaBrowser.listObjects(on: connection)
+            let objects: [SchemaObject]
+            var notice: String?
+            if profile.kind == .redis, let redis = connection as? RedisConnection {
+                let scan = try await redis.scanKeys()
+                objects = scan.keys.map { SchemaObject(schema: nil, name: $0, kind: .key) }
+                if scan.truncated {
+                    notice = "Showing first \(scan.keys.count) keys"
+                }
+            } else {
+                objects = try await SchemaBrowser.listObjects(on: connection)
+            }
             let valid = Set(objects.map(\.id))
             var columns = schemaByProfile[profile.id]?.columns ?? [:]
             columns = columns.filter { valid.contains($0.key) }
@@ -40,6 +53,7 @@ extension WorkspaceModel {
             if selectedConnectionID == profile.id || selectedTabConnectionID == profile.id {
                 applySchemaSnapshot(profile.id)
                 schemaExpandedIDs = schemaExpandedIDs.intersection(valid)
+                schemaNotice = notice
             }
             if profile.kind == .postgres {
                 let schemas = objects.compactMap(\.schema)
@@ -54,6 +68,7 @@ extension WorkspaceModel {
             if selectedConnectionID == profile.id {
                 schemaObjects = []
                 schemaTables = []
+                schemaNotice = nil
                 schemaError = error.localizedDescription
             }
         }
@@ -105,6 +120,9 @@ extension WorkspaceModel {
         let valid = Set(snap.objects.map(\.id))
         schemaIndexesByID = schemaIndexesByID.filter { valid.contains($0.key) }
         schemaForeignKeysByID = schemaForeignKeysByID.filter { valid.contains($0.key) }
+        if document.connections.first(where: { $0.id == profileID })?.kind != .redis {
+            schemaNotice = nil
+        }
     }
 
     func loadSchemaDetails(_ object: SchemaObject, reportError: Bool = true, profileID: UUID? = nil) async {
@@ -121,7 +139,7 @@ extension WorkspaceModel {
         let id = profileID ?? selectedTabConnectionID ?? selectedConnectionID
         guard let id,
               let connection = await connectionManager.connection(for: id) else { return }
-        if busyProfileID != nil { return }
+        if isProfileBusy(id) { return }
         do {
             let indexes = try await SchemaBrowser.listIndexes(on: connection, object: object)
             let keys = try await SchemaBrowser.listForeignKeys(on: connection, object: object)
@@ -169,7 +187,7 @@ extension WorkspaceModel {
         let id = profileID ?? selectedTabConnectionID ?? selectedConnectionID
         guard let id,
               let connection = await connectionManager.connection(for: id) else { return }
-        if busyProfileID != nil {
+        if isProfileBusy(id) {
             if reportError {
                 schemaError = "A query is running. Stop it before loading columns."
             }
@@ -209,7 +227,7 @@ extension WorkspaceModel {
             }
             for object in ordered {
                 if Task.isCancelled { return }
-                if self.busyProfileID != nil { return }
+                if self.isProfileBusy(id) { return }
                 let cached = id.flatMap { self.schemaByProfile[$0]?.columns[object.id] }
                 if cached != nil || self.schemaColumnsByID[object.id] != nil { continue }
                 await self.loadSchemaColumns(object, reportError: false, profileID: id)
@@ -351,13 +369,38 @@ extension WorkspaceModel {
             activeError = "Select a connection first."
             return
         }
-        if busyProfileID != nil {
+        if isProfileBusy(profile.id) {
             activeError = "A query is running. Stop it before opening a table."
+            return
+        }
+        if profile.kind == .redis, object.schema == nil || object.schema == "none" {
+            Task { await openRedisKey(object, profile: profile) }
             return
         }
         let sql = SchemaBrowser.selectAllSQL(object, kind: profile.kind)
         let tab = newTab(title: object.name, sql: sql, titleIsCustom: true)
         run(tab.id)
+    }
+
+    private func openRedisKey(_ object: SchemaObject, profile: ConnectionProfile) async {
+        if isProfileBusy(profile.id) {
+            activeError = "A query is running. Stop it before opening a table."
+            return
+        }
+        guard let redis = await connectionManager.connection(for: profile.id) as? RedisConnection else {
+            activeError = "Not connected"
+            return
+        }
+        do {
+            let type = try await redis.keyTypeAndTTL(object.name).type
+            var typed = object
+            typed.schema = type
+            let sql = SchemaBrowser.selectAllSQL(typed, kind: .redis)
+            let tab = newTab(title: object.name, sql: sql, titleIsCustom: true)
+            run(tab.id)
+        } catch {
+            activeError = error.localizedDescription
+        }
     }
 
 }
