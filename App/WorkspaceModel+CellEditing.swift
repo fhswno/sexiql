@@ -42,7 +42,8 @@ extension WorkspaceModel {
     }
 
     func handleCellEdit(tabID: UUID, resultIndex: Int, row: Int, column: Int, newValue: SQLValue) {
-        if busyProfileID != nil {
+        guard let profileID = document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID else { return }
+        if isProfileBusy(profileID) {
             activeError = "A query is running. Stop it before editing cells."
             return
         }
@@ -50,7 +51,6 @@ extension WorkspaceModel {
               let editable = result.editableTable, editable.columns.indices.contains(column) else {
             return
         }
-        guard let profileID = document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID else { return }
         if result.draftRowIndex == row {
             result.model.setValue(newValue, at: row, column: column)
             Task { await commitDraftIfReady(result, profileID: profileID) }
@@ -77,7 +77,8 @@ extension WorkspaceModel {
     }
 
     func addResultRow(tabID: UUID, resultIndex: Int) {
-        if busyProfileID != nil {
+        let profileID = document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID
+        if isProfileBusy(profileID) {
             activeError = "A query is running. Stop it before inserting a row."
             return
         }
@@ -125,13 +126,13 @@ extension WorkspaceModel {
     }
 
     func deleteResultRows(tabID: UUID, resultIndex: Int, rows: [Int]) {
-        if busyProfileID != nil {
+        guard let profileID = document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID else { return }
+        if isProfileBusy(profileID) {
             activeError = "A query is running. Stop it before deleting rows."
             return
         }
         guard let result = results[tabID]?[resultIndex], result.status == .complete,
               result.editableTable != nil else { return }
-        guard let profileID = document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID else { return }
         Task { await deleteRows(rows.sorted(), from: result, profileID: profileID) }
     }
 
