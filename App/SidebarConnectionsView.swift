@@ -141,10 +141,18 @@ struct SidebarConnectionsView: View {
                     connectionGlyph(connection, status: status)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(connection.name)
-                            .font(.callout.weight(isSelected ? .semibold : .regular))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
+                        HStack(spacing: 4) {
+                            Text(connection.name)
+                                .font(.callout.weight(isSelected ? .semibold : .regular))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            if connection.readOnly {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .help("Read-only")
+                            }
+                        }
                         Text(connectionSubtitle(connection, status: status))
                             .font(SexiQLType.rowSubtitle)
                             .foregroundStyle(statusForeground(status))
