@@ -42,8 +42,10 @@ final class WorkspaceModel {
 
     var runningTabs: Set<UUID> = []
     var runTasks: [UUID: Task<Void, Never>] = [:]
+    var runTokens: [UUID: UUID] = [:]
 
-    var busyProfileID: UUID?
+    var busyProfileIDs: Set<UUID> = []
+    var schemaNotice: String?
     var activeError: String?
 
     var connectionFailure: ConnectionFailure?
@@ -110,6 +112,27 @@ final class WorkspaceModel {
         guard let results = results[tabID] else { return false }
         return results.contains { $0.status == .running || $0.status == .streaming || $0.status == .pending }
             && runTasks[tabID] != nil
+    }
+
+    func isProfileBusy(_ profileID: UUID?) -> Bool {
+        guard let profileID else { return false }
+        return busyProfileIDs.contains(profileID)
+    }
+
+    func hasLiveRun(on profileID: UUID) -> Bool {
+        document.openTabs.contains { tab in
+            tab.connectionProfileID == profileID && runTasks[tab.id] != nil
+        }
+    }
+
+    func markProfileBusy(_ profileID: UUID) {
+        busyProfileIDs.insert(profileID)
+    }
+
+    func unmarkProfileBusy(_ profileID: UUID) {
+        if !hasLiveRun(on: profileID) {
+            busyProfileIDs.remove(profileID)
+        }
     }
 
     init(
