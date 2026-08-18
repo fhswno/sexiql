@@ -78,6 +78,34 @@ final class PGWireTests: XCTestCase {
         XCTAssertEqual(PGRowCodec.textEncoding(.int(42)), "42")
         XCTAssertEqual(PGRowCodec.textEncoding(.string("hi")), "hi")
     }
+
+    func testSimpleQueryPayloadPreservesJSONAndComparison() {
+        let sql = """
+        SELECT id, state, created_at, started_at, completed_at, tracking_id
+        FROM q_events
+        WHERE event = 'Nightly Sync > Client'
+          AND input->>'client' = 'ironclad'
+        ORDER BY created_at DESC
+        LIMIT 10
+        """
+        let payload = PGQueryMessages.simpleQueryPayload(sql)
+        XCTAssertEqual(payload.last, 0)
+        let decoded = String(decoding: payload.dropLast(), as: UTF8.self)
+        XCTAssertEqual(decoded, sql)
+        XCTAssertTrue(decoded.contains("->>'client'"))
+        XCTAssertTrue(decoded.contains("Nightly Sync > Client"))
+    }
+
+    func testRetryableSendFailureClassification() {
+        XCTAssertTrue(PGError(code: "08006", message: "Postgres write failed").isRetryableSendFailure)
+        XCTAssertTrue(PGError(code: "08006", message: "Postgres output stream is closed").isRetryableSendFailure)
+        XCTAssertTrue(PGError(code: "08006", message: "Not connected").isRetryableSendFailure)
+        XCTAssertFalse(PGError(code: "08006", message: "Postgres read failed").isRetryableSendFailure)
+        XCTAssertFalse(PGError(code: "08006", message: "Postgres server closed the connection").isRetryableSendFailure)
+        XCTAssertFalse(PGError(code: "08006", message: "Connection closed by server").isRetryableSendFailure)
+        XCTAssertFalse(PGError(code: "08006", message: "Timed out waiting for Postgres server response after 30s").isRetryableSendFailure)
+        XCTAssertFalse(PGError(code: "42P01", message: "relation \"t\" does not exist").isRetryableSendFailure)
+    }
 }
 
 final class PGTypeTests: XCTestCase {
