@@ -45,6 +45,7 @@ public enum ConnectionURLParser {
         if lower.hasPrefix("postgres://") || lower.hasPrefix("postgresql://") { return true }
         if lower.hasPrefix("mysql://") || lower.hasPrefix("mysql2://") { return true }
         if lower.hasPrefix("sqlite://") || lower.hasPrefix("sqlite:") || lower.hasPrefix("file:") { return true }
+        if lower.hasPrefix("redis://") || lower.hasPrefix("rediss://") { return true }
         if lower.hasPrefix("jdbc:postgresql:") || lower.hasPrefix("jdbc:mysql:") { return true }
         if trimmed.contains("://") { return true }
         return false
@@ -74,6 +75,12 @@ public enum ConnectionURLParser {
             components.kind = .postgres
         case "mysql", "mysql2":
             components.kind = .mysql
+        case "redis":
+            components.kind = .redis
+            if components.tlsMode == nil { components.tlsMode = .off }
+        case "rediss":
+            components.kind = .redis
+            if components.tlsMode == nil { components.tlsMode = .required }
         case "sqlite", "file":
             return parseSQLite(working)
         default:
@@ -178,6 +185,12 @@ public enum ConnectionURLParser {
         switch scheme {
         case "postgres", "postgresql": components.kind = .postgres
         case "mysql", "mysql2": components.kind = .mysql
+        case "redis":
+            components.kind = .redis
+            components.tlsMode = .off
+        case "rediss":
+            components.kind = .redis
+            components.tlsMode = .required
         default: break
         }
 
