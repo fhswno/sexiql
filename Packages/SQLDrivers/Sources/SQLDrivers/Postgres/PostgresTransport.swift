@@ -272,8 +272,20 @@ final class PostgresTransport: @unchecked Sendable {
                 }
                 let count = output.write(base.advanced(by: offset), maxLength: data.count - offset)
                 if count < 0 {
-                    throw output.streamError
-                        ?? PGError(code: "08006", message: "Postgres write failed")
+                    if let error = output.streamError {
+                        throw PGError(
+                            code: "08006",
+                            message: "Postgres write failed: \(error.localizedDescription) (status \(output.streamStatus.describe))"
+                        )
+                    }
+                    if output.streamStatus.isTerminal {
+                        throw PGError(
+                            code: "08006",
+                            message: "Postgres write failed (status \(output.streamStatus.describe))"
+                        )
+                    }
+                    RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+                    continue
                 }
                 if count == 0 {
                     RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
@@ -318,5 +330,19 @@ final class PostgresTransport: @unchecked Sendable {
 private extension Stream.Status {
     var isTerminal: Bool {
         self == .closed || self == .atEnd || self == .error
+    }
+
+    var describe: String {
+        switch self {
+        case .notOpen: "notOpen"
+        case .opening: "opening"
+        case .open: "open"
+        case .reading: "reading"
+        case .writing: "writing"
+        case .atEnd: "atEnd"
+        case .closed: "closed"
+        case .error: "error"
+        @unknown default: "unknown"
+        }
     }
 }
