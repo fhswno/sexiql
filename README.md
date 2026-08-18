@@ -46,6 +46,7 @@ Tests are plain XCTest and run unchanged under `swift test`/Xcode; `Scripts/test
 ```sh
 SEXIQL_TEST_PG_URL=postgres://user:password@localhost:5432/db Scripts/test.sh
 SEXIQL_TEST_MYSQL_URL=mysql://user:password@localhost:3306/db Scripts/test.sh
+SEXIQL_TEST_REDIS_URL=redis://localhost:6379/0 Scripts/test.sh
 ```
 
 These exercise real handshakes (SCRAM-SHA-256, MD5, cleartext), TLS negotiation, prepared statements, and row streaming. The default suite never starts a database and never invokes psql/mysql/Docker.
