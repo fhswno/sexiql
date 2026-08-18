@@ -1,5 +1,8 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import SQLCore
+import SQLUI
 
 struct ConnectionEditorView: View {
     @Environment(WorkspaceModel.self) private var model
@@ -19,6 +22,12 @@ struct ConnectionEditorView: View {
     @State private var sshUsername = ""
     @State private var privateKeyPath = ""
     @State private var urlPasteHint: String?
+    @State private var readOnly = false
+    @State private var passwordOnFile = false
+    @State private var testMessage: String?
+    @State private var testFailed = false
+    @State private var isTesting = false
+    @State private var showingReadOnlyHelp = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,8 +47,33 @@ struct ConnectionEditorView: View {
                     }
                 }
 
+                Toggle(isOn: $readOnly) {
+                    HStack(spacing: 6) {
+                        Text("Read-only")
+                        Image(systemName: "info.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .onHover { showingReadOnlyHelp = $0 }
+                            .popover(isPresented: $showingReadOnlyHelp, arrowEdge: .top) {
+                                Text("Blocks writes on this connection: INSERT, UPDATE, DELETE, and DDL (Redis SET/DEL/…). SELECT, GET, and schema browse still work. Cell edits and CSV import are disabled.")
+                                    .font(.caption)
+                                    .foregroundStyle(.primary)
+                                    .multilineTextAlignment(.leading)
+                                    .padding(10)
+                                    .frame(width: 260, alignment: .leading)
+                                    .onHover { hovering in
+                                        if hovering { showingReadOnlyHelp = true }
+                                    }
+                            }
+                    }
+                }
+                .tint(SexiQLColors.connected)
+
                 if kind == .sqlite {
-                    TextField("Database file path", text: $database)
+                    HStack {
+                        TextField("Database file path", text: $database)
+                        Button("Browse…") { pickSQLiteFile() }
+                    }
                 } else {
                     TextField("Host", text: $host)
                         .onChange(of: host) { _, newValue in
@@ -56,6 +90,11 @@ struct ConnectionEditorView: View {
                     }
                     TextField(kind == .redis ? "ACL username (optional)" : "Username", text: $username)
                     SecureField("Password", text: $password)
+                    if passwordOnFile, password.isEmpty {
+                        Text("Password saved")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     Picker("TLS", selection: $tlsMode) {
                         Text("Off").tag(TLSMode.off)
                         Text("Preferred (encrypt if available)").tag(TLSMode.preferred)
@@ -82,7 +121,26 @@ struct ConnectionEditorView: View {
             }
             .formStyle(.grouped)
 
+            if let testMessage {
+                Text(testMessage)
+                    .font(.caption)
+                    .foregroundStyle(testFailed ? SexiQLColors.failed : SexiQLColors.connected)
+                    .padding(.horizontal)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             HStack {
+                Button {
+                    Task { await test() }
+                } label: {
+                    if isTesting {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Text("Test Connection")
+                    }
+                }
+                .disabled(!isValid || isTesting)
                 Spacer()
                 Button("Cancel") {
                     model.showingConnectionEditor = false
@@ -122,6 +180,8 @@ struct ConnectionEditorView: View {
         sshPort = profile.ssh.map { String($0.port) } ?? "22"
         sshUsername = profile.ssh?.username ?? ""
         privateKeyPath = profile.ssh?.privateKeyPath ?? ""
+        readOnly = profile.readOnly
+        passwordOnFile = model.hasSavedPassword(for: profile.id)
     }
 
     /// When the user pastes a full connection URL into Host, expand it into fields.
@@ -191,9 +251,15 @@ struct ConnectionEditorView: View {
             applyParsedURL(parsed)
         }
 
+        let saved = makeProfile()
+        model.saveProfile(saved, password: password.isEmpty ? nil : password)
+        model.showingConnectionEditor = false
+    }
+
+    private func makeProfile() -> ConnectionProfile {
         let resolvedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedPort = Int(port) ?? kind.defaultPort
-        let saved = ConnectionProfile(
+        return ConnectionProfile(
             id: profile?.id ?? UUID(),
             name: name.trimmingCharacters(in: .whitespaces),
             kind: kind,
@@ -211,9 +277,36 @@ struct ConnectionEditorView: View {
                     authentication: .privateKey,
                     privateKeyPath: privateKeyPath.isEmpty ? nil : privateKeyPath
                 )
-                : nil
+                : nil,
+            readOnly: readOnly
         )
-        model.saveProfile(saved, password: password.isEmpty ? nil : password)
-        model.showingConnectionEditor = false
+    }
+
+    private func pickSQLiteFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.database, .item]
+        panel.allowsOtherFileTypes = true
+        if panel.runModal() == .OK, let url = panel.url {
+            database = url.path
+        }
+    }
+
+    private func test() async {
+        isTesting = true
+        testMessage = nil
+        testFailed = false
+        let result = await model.testConnection(makeProfile(), password: password.isEmpty ? nil : password)
+        isTesting = false
+        switch result {
+        case .success(let detail):
+            testFailed = false
+            testMessage = "Connected (\(detail))"
+        case .failure(let error):
+            testFailed = true
+            testMessage = error.localizedDescription
+        }
     }
 }
