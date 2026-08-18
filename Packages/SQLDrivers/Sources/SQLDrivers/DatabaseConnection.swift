@@ -36,6 +36,7 @@ public struct ConnectionFactory: Sendable {
         case .postgres: PostgresConnection(profile: profile)
         case .mysql: MySQLConnection(profile: profile)
         case .sqlite: SQLiteConnection(profile: profile)
+        case .redis: RedisConnection(profile: profile)
         }
     }
 }
