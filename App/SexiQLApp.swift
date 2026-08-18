@@ -27,6 +27,22 @@ struct SexiQLApp: App {
                     model.newTab()
                 }
                 .keyboardShortcut("t", modifiers: .command)
+                Button("Open…") {
+                    model.openQueryFile()
+                }
+                .keyboardShortcut("o", modifiers: .command)
+            }
+            CommandGroup(replacing: .saveItem) {
+                Button("Save") {
+                    model.saveActiveQueryFile()
+                }
+                .keyboardShortcut("s", modifiers: .command)
+                .disabled(model.selectedTabID == nil)
+                Button("Save As…") {
+                    model.saveActiveQueryFileAs()
+                }
+                .keyboardShortcut("s", modifiers: [.command, .option])
+                .disabled(model.selectedTabID == nil)
             }
 
             CommandMenu("Query") {
