@@ -136,18 +136,14 @@ struct ResultsPaneView: View {
             switch result.status {
             case .pending:
                 ProgressView("Queued…").frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .running, .streaming:
-                VStack(spacing: SexiQLSpace.lg) {
-                    ProgressView()
-                    Text(result.status == .running ? "Running…" : "Streaming \(result.model.rows.count) rows…")
-                        .font(SexiQLType.rowSubtitle)
-                        .foregroundStyle(.secondary)
-                    Button("Stop") {
-                        model.cancelRun(tabID)
-                    }
-                    .buttonStyle(.bordered)
+            case .running:
+                waitingResult("Running…")
+            case .streaming:
+                if result.model.columns.isEmpty {
+                    waitingResult("Streaming \(result.model.rows.count) rows…")
+                } else {
+                    populatedResult(result, index: index)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .complete, .cancelled:
                 if result.model.columns.isEmpty {
                     VStack(spacing: SexiQLSpace.md) {
@@ -160,67 +156,7 @@ struct ResultsPaneView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    if result.status == .cancelled, let message = result.message {
-                        HStack(spacing: SexiQLSpace.sm) {
-                            Image(systemName: "stop.circle")
-                                .foregroundStyle(.secondary)
-                            Text(message)
-                                .font(SexiQLType.rowSubtitle)
-                                .foregroundStyle(.secondary)
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, SexiQLSpace.lg)
-                        .padding(.vertical, SexiQLSpace.sm)
-                        .background(Color.primary.opacity(0.04))
-                    }
-                    resultToolbar(result)
-                    ResultsTableView(
-                        model: result.model,
-                        filterText: result.filterText,
-                        sortOrdinal: $sortOrdinal,
-                        sortAscending: $sortAscending,
-                        selectedIDs: $selectedRowIDs,
-                        isEditable: result.editableTable != nil && result.status == .complete,
-                        draftRowID: result.draftRowIndex,
-                        onEditCell: { row, column, value in
-                            model.handleCellEdit(
-                                tabID: tabID,
-                                resultIndex: index,
-                                row: row,
-                                column: column,
-                                newValue: value
-                            )
-                        },
-                        onDeleteRows: { ids in
-                            model.requestDeleteResultRows(
-                                tabID: tabID,
-                                resultIndex: index,
-                                rows: Array(ids)
-                            )
-                        },
-                        onCopied: { showCopyFeedback($0) },
-                        inspectedCell: $inspectedCell,
-                        requestedEdit: $requestedEdit
-                    )
-                    .onAppear { registerRowHandlers(result, index: index) }
-                    .onChange(of: selectedRowIDs) { _, _ in
-                        registerRowHandlers(result, index: index)
-                    }
-                    .onChange(of: result.editableTable != nil) { _, _ in
-                        registerRowHandlers(result, index: index)
-                    }
-                    .onChange(of: result.model.rows.count) { _, _ in
-                        selectedRowIDs = selectedRowIDs.filter { $0 < result.model.rows.count }
-                    }
-                    .onDisappear {
-                        model.addResultRowHandler = nil
-                        model.deleteResultRowsHandler = nil
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    if model.inspectorVisible {
-                        inspectorStrip(result)
-                    }
-                    statusBar(result)
+                    populatedResult(result, index: index)
                 }
             case .failed:
                 QueryErrorView(
@@ -247,6 +183,102 @@ struct ResultsPaneView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private func waitingResult(_ title: String) -> some View {
+        VStack(spacing: SexiQLSpace.lg) {
+            ProgressView()
+            Text(title)
+                .font(SexiQLType.rowSubtitle)
+                .foregroundStyle(.secondary)
+            Button("Stop") {
+                model.cancelRun(tabID)
+            }
+            .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private func populatedResult(_ result: StatementResult, index: Int) -> some View {
+        if result.status == .cancelled, let message = result.message {
+            HStack(spacing: SexiQLSpace.sm) {
+                Image(systemName: "stop.circle")
+                    .foregroundStyle(.secondary)
+                Text(message)
+                    .font(SexiQLType.rowSubtitle)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, SexiQLSpace.lg)
+            .padding(.vertical, SexiQLSpace.sm)
+            .background(Color.primary.opacity(0.04))
+        }
+        if result.status == .streaming {
+            HStack(spacing: SexiQLSpace.sm) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Streaming \(result.model.rows.count) rows…")
+                    .font(SexiQLType.rowSubtitle)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Button("Stop") {
+                    model.cancelRun(tabID)
+                }
+                .buttonStyle(.borderless)
+            }
+            .padding(.horizontal, SexiQLSpace.lg)
+            .padding(.vertical, SexiQLSpace.sm)
+            .background(Color.primary.opacity(0.04))
+        }
+        resultToolbar(result)
+        ResultsTableView(
+            model: result.model,
+            filterText: result.filterText,
+            sortOrdinal: $sortOrdinal,
+            sortAscending: $sortAscending,
+            selectedIDs: $selectedRowIDs,
+            isEditable: result.editableTable != nil && result.status == .complete,
+            draftRowID: result.draftRowIndex,
+            onEditCell: { row, column, value in
+                model.handleCellEdit(
+                    tabID: tabID,
+                    resultIndex: index,
+                    row: row,
+                    column: column,
+                    newValue: value
+                )
+            },
+            onDeleteRows: { ids in
+                model.requestDeleteResultRows(
+                    tabID: tabID,
+                    resultIndex: index,
+                    rows: Array(ids)
+                )
+            },
+            onCopied: { showCopyFeedback($0) },
+            inspectedCell: $inspectedCell,
+            requestedEdit: $requestedEdit
+        )
+        .onAppear { registerRowHandlers(result, index: index) }
+        .onChange(of: selectedRowIDs) { _, _ in
+            registerRowHandlers(result, index: index)
+        }
+        .onChange(of: result.editableTable != nil) { _, _ in
+            registerRowHandlers(result, index: index)
+        }
+        .onChange(of: result.model.rows.count) { _, _ in
+            selectedRowIDs = selectedRowIDs.filter { $0 < result.model.rows.count }
+        }
+        .onDisappear {
+            model.addResultRowHandler = nil
+            model.deleteResultRowsHandler = nil
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        if model.inspectorVisible {
+            inspectorStrip(result)
+        }
+        statusBar(result)
+    }
+
     private func resultToolbar(_ result: StatementResult) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: SexiQLSpace.md) {
@@ -264,7 +296,7 @@ struct ResultsPaneView: View {
                         Image(systemName: "plus")
                     }
                     .buttonStyle(.borderless)
-                    .disabled(model.busyProfileID != nil)
+                    .disabled(model.isProfileBusy(model.document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID))
                     .help("Add row")
 
                     Button {
@@ -277,7 +309,7 @@ struct ResultsPaneView: View {
                         Image(systemName: "trash")
                     }
                     .buttonStyle(.borderless)
-                    .disabled(selectedRowIDs.isEmpty || model.busyProfileID != nil)
+                    .disabled(selectedRowIDs.isEmpty || model.isProfileBusy(model.document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID))
                     .help(selectedRowIDs.count > 1 ? "Delete \(selectedRowIDs.count) rows" : "Delete row")
 
                     Button {
