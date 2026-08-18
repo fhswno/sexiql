@@ -92,6 +92,12 @@ extension WorkspaceModel {
 
         let text = resolveSQLToRun(tabID: tabID, override: overrideSQL)
         let kind = document.connections.first(where: { $0.id == profileID })?.kind
+        if let profile = document.connections.first(where: { $0.id == profileID }),
+           profile.readOnly,
+           StatementWriteGuard.isWrite(text, kind: profile.kind) {
+            activeError = "Connection is read-only."
+            return
+        }
         let statements: [SQLStatement]
         if kind == .redis {
             statements = RedisCommand.splitStatements(text).map { SQLStatement(text: $0) }
