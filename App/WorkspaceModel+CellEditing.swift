@@ -47,6 +47,10 @@ extension WorkspaceModel {
             activeError = "A query is running. Stop it before editing cells."
             return
         }
+        if document.connections.first(where: { $0.id == profileID })?.readOnly == true {
+            activeError = "Connection is read-only."
+            return
+        }
         guard let result = results[tabID]?[resultIndex], result.status == .complete,
               let editable = result.editableTable, editable.columns.indices.contains(column) else {
             return
@@ -80,6 +84,10 @@ extension WorkspaceModel {
         let profileID = document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID
         if isProfileBusy(profileID) {
             activeError = "A query is running. Stop it before inserting a row."
+            return
+        }
+        if profileID.map({ id in document.connections.first(where: { $0.id == id })?.readOnly == true }) == true {
+            activeError = "Connection is read-only."
             return
         }
         guard let result = results[tabID]?[resultIndex], result.status == .complete,
@@ -129,6 +137,10 @@ extension WorkspaceModel {
         guard let profileID = document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID else { return }
         if isProfileBusy(profileID) {
             activeError = "A query is running. Stop it before deleting rows."
+            return
+        }
+        if document.connections.first(where: { $0.id == profileID })?.readOnly == true {
+            activeError = "Connection is read-only."
             return
         }
         guard let result = results[tabID]?[resultIndex], result.status == .complete,
