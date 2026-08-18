@@ -35,4 +35,40 @@ final class SSHTunnelTests: XCTestCase {
         XCTAssertThrowsError(try SSHCommandBuilder.make(ssh: SSHTunnelConfiguration(host: "b", username: "d", authentication: .privateKey), databaseHost: "", databasePort: 3306, localPort: 49152))
         XCTAssertThrowsError(try SSHCommandBuilder.make(ssh: SSHTunnelConfiguration(host: "b", username: "d", authentication: .privateKey), databaseHost: "db", databasePort: 0, localPort: 49152))
     }
+
+    func testStderrSanitizeEmptyUsesFallback() {
+        XCTAssertEqual(
+            SSHStderr.describeFailure(fallback: "ssh exited before the tunnel became ready", stderr: "  \n\n"),
+            "ssh exited before the tunnel became ready"
+        )
+    }
+
+    func testStderrIncludesPermissionDenied() {
+        let out = SSHStderr.describeFailure(
+            fallback: "ssh exited before the tunnel became ready",
+            stderr: "Permission denied (publickey).\n"
+        )
+        XCTAssertTrue(out.contains("Permission denied (publickey)."))
+        XCTAssertEqual(
+            TunnelError.processFailed(out).errorDescription,
+            "SSH failed: ssh exited before the tunnel became ready\nPermission denied (publickey)."
+        )
+    }
+
+    func testStderrTruncatesLongOutput() {
+        let lines = (1...20).map { "line \($0) " + String(repeating: "x", count: 80) }
+        let cleaned = SSHStderr.sanitize(lines.joined(separator: "\n"))
+        XCTAssertTrue(cleaned.split(separator: "\n").count <= SSHStderr.maxLines)
+        XCTAssertTrue(cleaned.count <= SSHStderr.maxChars + 1)
+        XCTAssertTrue(cleaned.contains("line 20"))
+        XCTAssertFalse(cleaned.contains("line 1 "))
+    }
+
+    func testTimedOutIncludesDetail() {
+        XCTAssertEqual(TunnelError.timedOut("").errorDescription, "SSH tunnel timed out")
+        XCTAssertEqual(
+            TunnelError.timedOut("Host key verification failed.").errorDescription,
+            "SSH tunnel timed out\nHost key verification failed."
+        )
+    }
 }
