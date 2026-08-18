@@ -26,8 +26,15 @@ public struct SQLToken: Sendable, Equatable {
     }
 }
 
+public enum EditorDialect: Sendable, Equatable {
+    case sql
+    case redis
+}
+
 /// Tokenizer for SQL.
 public struct SQLLexer: Sendable {
+    public var dialect: EditorDialect
+
     public static let keywords: Set<String> = [
         "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "UPDATE", "DELETE",
         "CREATE", "DROP", "ALTER", "TABLE", "INDEX", "VIEW", "SEQUENCE", "SCHEMA",
@@ -43,12 +50,26 @@ public struct SQLLexer: Sendable {
         "SET", "GRANT", "REVOKE", "TO", "ADD", "COLUMN", "RENAME", "TEMP",
     ]
 
+    public static let redisKeywords: Set<String> = [
+        "GET", "SET", "SETEX", "SETNX", "MSET", "MGET", "DEL", "UNLINK", "EXISTS",
+        "TYPE", "TTL", "PTTL", "EXPIRE", "PEXPIRE", "PERSIST", "RENAME", "KEYS",
+        "SCAN", "AUTH", "PING", "ECHO", "SELECT", "INFO", "FLUSHDB", "FLUSHALL",
+        "HGET", "HSET", "HDEL", "HGETALL", "HKEYS", "HVALS", "HEXISTS", "HLEN",
+        "LPUSH", "RPUSH", "LPOP", "RPOP", "LRANGE", "LINDEX", "LSET", "LLEN", "LREM",
+        "SADD", "SREM", "SMEMBERS", "SISMEMBER", "SCARD", "SUNION", "SINTER",
+        "ZADD", "ZREM", "ZRANGE", "ZREVRANGE", "ZSCORE", "ZCARD", "ZRANK",
+        "XADD", "XRANGE", "XREAD", "XLEN", "PUBLISH", "SUBSCRIBE",
+        "INCR", "DECR", "INCRBY", "DECRBY", "APPEND", "STRLEN", "GETSET",
+    ]
+
     private static let twoCharOperators: Set<String> = [
         "==", ">=", "<=", "<>", "!=", "||", "&&", "::", ":=",
         "->", "<<", ">>", "~*", "!~", "!*", "~~", "#>", "#-", "..", "??",
     ]
 
-    public init() {}
+    public init(dialect: EditorDialect = .sql) {
+        self.dialect = dialect
+    }
 
     public func tokenize(_ sql: String) -> [SQLToken] {
         let units = Array(sql.utf16)
@@ -63,12 +84,16 @@ public struct SQLLexer: Sendable {
                 let start = i
                 while i < count && Self.isWhitespace(units[i]) { i += 1 }
                 tokens.append(makeToken(.whitespace, units, start, i))
-            } else if unit == 0x2D, i + 1 < count, units[i + 1] == 0x2D {
+            } else if dialect == .redis, unit == 0x23 {
+                let start = i
+                while i < count && units[i] != 0x0A { i += 1 }
+                tokens.append(makeToken(.comment, units, start, i))
+            } else if dialect == .sql, unit == 0x2D, i + 1 < count, units[i + 1] == 0x2D {
                 let start = i
                 i += 2
                 while i < count && units[i] != 0x0A { i += 1 }
                 tokens.append(makeToken(.comment, units, start, i))
-            } else if unit == 0x2F, i + 1 < count, units[i + 1] == 0x2A {
+            } else if dialect == .sql, unit == 0x2F, i + 1 < count, units[i + 1] == 0x2A {
                 let start = i
                 i += 2
                 while i < count {
@@ -88,6 +113,21 @@ public struct SQLLexer: Sendable {
                             i += 2
                             continue
                         }
+                        i += 1
+                        break
+                    }
+                    i += 1
+                }
+                tokens.append(makeToken(.string, units, start, i))
+            } else if dialect == .redis, unit == 0x22 {
+                let start = i
+                i += 1
+                while i < count {
+                    if units[i] == 0x5C, i + 1 < count {
+                        i += 2
+                        continue
+                    }
+                    if units[i] == 0x22 {
                         i += 1
                         break
                     }
@@ -134,7 +174,8 @@ public struct SQLLexer: Sendable {
                 let start = i
                 while i < count && Self.isIdentifierPart(units[i]) { i += 1 }
                 let text = String(decoding: units[start..<i], as: UTF16.self)
-                let kind: SQLTokenKind = Self.keywords.contains(text.uppercased()) ? .keyword : .identifier
+                let keywords = dialect == .redis ? Self.redisKeywords : Self.keywords
+                let kind: SQLTokenKind = keywords.contains(text.uppercased()) ? .keyword : .identifier
                 tokens.append(SQLToken(kind: kind, text: text, location: start, length: i - start))
             } else {
                 let start = i
