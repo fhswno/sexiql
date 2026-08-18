@@ -11,14 +11,15 @@ extension WorkspaceModel {
     // MARK: - Tabs
 
     @discardableResult
-    func newTab(title: String = "Untitled Query", sql: String = "", titleIsCustom: Bool? = nil) -> EditorTabState {
+    func newTab(title: String = "Untitled Query", sql: String = "", titleIsCustom: Bool? = nil, fileURL: URL? = nil) -> EditorTabState {
         let resolvedTitle = uniqueTabTitle(title)
         let custom = titleIsCustom ?? !EditorTabState(title: title).isDefaultUntitledTitle
         let tab = EditorTabState(
             title: resolvedTitle,
             connectionProfileID: selectedConnectionID,
             sql: sql,
-            titleIsCustom: custom
+            titleIsCustom: custom,
+            fileURL: fileURL
         )
         document.openTabs.append(tab)
         setTabTextExternal(tab.id, sql: sql)
