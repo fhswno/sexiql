@@ -13,12 +13,8 @@ extension WorkspaceModel {
     func prepareImport(from url: URL, profileID: UUID) {
         do {
             let data = try Data(contentsOf: url)
-            let rows = try CSVCodec.parse(String(decoding: data, as: UTF8.self))
-            guard let header = rows.first, !header.isEmpty else {
-                activeError = "CSV file is empty."
-                return
-            }
-            let session = ImportSession(csvColumns: header, csvRows: Array(rows.dropFirst()), hasHeader: true)
+            let dialect = CSVCodec.sniff(data)
+            let session = try ImportSession(rawData: data, dialect: dialect, hasHeader: true)
             session.profileID = profileID
             session.targetTable = schemaTables.first ?? ""
             importSession = session
@@ -29,21 +25,39 @@ extension WorkspaceModel {
         }
     }
 
+    func reloadImportSession() {
+        do {
+            try importSession?.applyParse()
+            importSession?.errorMessage = nil
+        } catch {
+            importSession?.errorMessage = error.localizedDescription
+        }
+    }
+
     func loadImportTargetColumns() async {
         guard let session = importSession, let profileID = session.profileID,
               let profile = document.connections.first(where: { $0.id == profileID }),
               let connection = await connectionManager.connection(for: profileID) else { return }
         do {
             let result: QueryResult
-            if profile.kind == .sqlite {
-                let escaped = session.targetTable.replacingOccurrences(of: "\"", with: "\"\"")
-                result = try await connection.execute("PRAGMA table_info(\"\(escaped)\")")
+            switch profile.kind {
+            case .sqlite:
+                let quoted = SchemaBrowser.quoteIdentifier(session.targetTable, kind: .sqlite)
+                result = try await connection.execute("PRAGMA table_info(\(quoted))")
                 session.tableColumns = result.rows.compactMap { row in
                     if case .string(let name) = row.values[1] { name } else { nil }
                 }
-            } else {
+            case .postgres:
                 result = try await connection.execute(
                     "SELECT column_name FROM information_schema.columns WHERE table_name = $1 ORDER BY ordinal_position",
+                    parameters: [.string(session.targetTable)]
+                )
+                session.tableColumns = result.rows.compactMap { row in
+                    if case .string(let name) = row.values.first { name } else { nil }
+                }
+            case .mysql:
+                result = try await connection.execute(
+                    "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
                     parameters: [.string(session.targetTable)]
                 )
                 session.tableColumns = result.rows.compactMap { row in
@@ -69,11 +83,17 @@ extension WorkspaceModel {
         }
         session.isRunning = true
         defer { session.isRunning = false }
-        let table = "\"" + session.targetTable.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        let kind = document.connections.first(where: { $0.id == profileID })?.kind ?? .sqlite
+        let table = SchemaBrowser.quoteIdentifier(session.targetTable, kind: kind)
         let columns = mapped.keys
-            .map { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
+            .map { SchemaBrowser.quoteIdentifier($0, kind: kind) }
             .joined(separator: ", ")
-        let placeholders = Array(repeating: "?", count: mapped.count).joined(separator: ", ")
+        let placeholders: String
+        if kind == .postgres {
+            placeholders = (1...mapped.count).map { "$\($0)" }.joined(separator: ", ")
+        } else {
+            placeholders = Array(repeating: "?", count: mapped.count).joined(separator: ", ")
+        }
         let sql = "INSERT INTO \(table) (\(columns)) VALUES (\(placeholders))"
         let csvColumnOrder = session.csvColumns
 
@@ -108,5 +128,4 @@ extension WorkspaceModel {
             session.errorMessage = "Import failed: \(error.localizedDescription)"
         }
     }
-
 }
