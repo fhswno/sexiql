@@ -48,4 +48,17 @@ final class SQLLimitGuardTests: XCTestCase {
         XCTAssertFalse(out.didLimit)
         XCTAssertEqual(out.sql, sql)
     }
+
+    func testExistingLimitWithJSONOperatorUnchanged() {
+        let sql = """
+        SELECT id FROM q_events
+        WHERE event = 'Nightly Sync > Client'
+          AND input->>'client' = 'ironclad'
+        ORDER BY created_at DESC
+        LIMIT 10
+        """
+        let out = guardLimit.apply(sql)
+        XCTAssertFalse(out.didLimit)
+        XCTAssertEqual(out.sql, sql)
+    }
 }
