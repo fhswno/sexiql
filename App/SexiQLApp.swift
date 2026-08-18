@@ -137,6 +137,10 @@ struct SexiQLApp: App {
                 }
                 .keyboardShortcut("y", modifiers: [.command, .shift])
 
+                Button(model.inspectorVisible ? "Hide Value Inspector" : "Show Value Inspector") {
+                    model.toggleInspector()
+                }
+
                 Divider()
 
                 Button(model.focusMode ? "Exit Focus Mode" : "Focus Mode") {
