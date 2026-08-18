@@ -10,6 +10,10 @@ public actor MySQLConnection: DatabaseConnection {
     private var packetSequence: UInt8 = 0
     private var connected = false
     private var tlsActive = false
+    private var password: String?
+
+    private var queryOperationBusy = false
+    private var queryOperationWaiters: [CheckedContinuation<Void, Never>] = []
 
     public init(profile: ConnectionProfile) {
         self.profile = profile
@@ -63,10 +67,10 @@ public actor MySQLConnection: DatabaseConnection {
             try await sendPacket(response, sequence: packetSequence)
             packetSequence &+= 1
             try await finishAuthentication(password: password ?? "", initialPlugin: plugin, scramble: parsedHandshake.scramble)
+            self.password = password
             connected = true
         } catch {
-            await transport.close()
-            connected = false
+            await hardClose()
             throw error
         }
     }
@@ -76,19 +80,33 @@ public actor MySQLConnection: DatabaseConnection {
             packetSequence = 0
             try? await sendPacket(Data([MySQLPrepared.comQuit]), sequence: 0)
         }
-        await transport.close()
-        connected = false
-        handshake = nil
+        await hardClose()
+        resetQueryOperationGate()
     }
 
     public func cancelInFlight() async {
-        await transport.close()
-        connected = false
-        handshake = nil
+        guard connected, let connectionID = handshake?.connectionID else {
+            await hardClose()
+            return
+        }
+        let side = MySQLConnection(profile: profile)
+        do {
+            try await side.connect(password: password)
+            do {
+                _ = try await side.execute(MySQLCancel.killQuerySQL(connectionID: connectionID))
+            } catch let error as MySQLWireError where MySQLCancel.isBenignKillError(error) {
+                // Query already finished.
+            }
+            try? await side.disconnect()
+        } catch {
+            await hardClose()
+        }
     }
 
     public func execute(_ sql: String, parameters: [SQLValue]) async throws -> QueryResult {
         try requireConnected()
+        await beginQueryOperation()
+        defer { endQueryOperation() }
         if parameters.isEmpty {
             try await sendCommand(MySQLPrepared.comQuery, payload: Data(sql.utf8))
             let start = try await readResultStart(binaryRows: false)
@@ -107,12 +125,29 @@ public actor MySQLConnection: DatabaseConnection {
 
     public func stream(_ sql: String) async throws -> StreamedQuery {
         try requireConnected()
+        await beginQueryOperation()
+        var handedOff = false
+        defer {
+            if !handedOff {
+                endQueryOperation()
+            }
+        }
         try await sendCommand(MySQLPrepared.comQuery, payload: Data(sql.utf8))
         let start = try await readResultStart(binaryRows: false)
         guard let columns = start.columns else {
             return StreamedQuery(columns: [], rows: RowStream { $0.finish() })
         }
-        let stream = RowStream { continuation in
+        handedOff = true
+        return StreamedQuery(columns: columns, rows: makeRowStream(columns: columns))
+    }
+
+    public func serverVersion() async throws -> String? {
+        try requireConnected()
+        return handshake?.serverVersion
+    }
+
+    private func makeRowStream(columns: [SQLColumn]) -> RowStream {
+        RowStream { continuation in
             Task {
                 do {
                     while let row = try await self.readNextRow(columns: columns, binary: false) {
@@ -122,14 +157,42 @@ public actor MySQLConnection: DatabaseConnection {
                 } catch {
                     continuation.finish(throwing: error)
                 }
+                await self.endQueryOperation()
             }
         }
-        return StreamedQuery(columns: columns, rows: stream)
     }
 
-    public func serverVersion() async throws -> String? {
-        try requireConnected()
-        return handshake?.serverVersion
+    private func beginQueryOperation() async {
+        while queryOperationBusy {
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                queryOperationWaiters.append(cont)
+            }
+        }
+        queryOperationBusy = true
+    }
+
+    private func endQueryOperation() {
+        queryOperationBusy = false
+        guard !queryOperationWaiters.isEmpty else { return }
+        let next = queryOperationWaiters.removeFirst()
+        next.resume()
+    }
+
+    private func resetQueryOperationGate() {
+        queryOperationBusy = false
+        let waiters = queryOperationWaiters
+        queryOperationWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+
+    private func hardClose() async {
+        await transport.close()
+        connected = false
+        handshake = nil
+        password = nil
+        tlsActive = false
     }
 
     // MARK: - Authentication
