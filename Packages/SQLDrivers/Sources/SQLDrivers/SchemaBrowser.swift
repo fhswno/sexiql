@@ -172,8 +172,8 @@ public enum SchemaBrowser: Sendable {
 
     private static func redisObjects(_ connection: any DatabaseConnection) async throws -> [SchemaObject] {
         guard let redis = connection as? RedisConnection else { return [] }
-        let keys = try await redis.scanKeys()
-        return keys.map { SchemaObject(schema: $0.type, name: $0.key, kind: .key) }
+        let scan = try await redis.scanKeys()
+        return scan.keys.map { SchemaObject(schema: nil, name: $0, kind: .key) }
     }
 
     private static func redisColumns(
