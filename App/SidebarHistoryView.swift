@@ -4,10 +4,24 @@ import SQLUI
 
 struct SidebarHistoryView: View {
     @Environment(WorkspaceModel.self) private var model
+    @State private var showingClearConfirm = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ChromeSectionHeader(title: "History")
+            ChromeSectionHeader(title: "History") {
+                if !model.document.history.isEmpty {
+                    Button {
+                        showingClearConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.caption.weight(.semibold))
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Clear History…")
+                }
+            }
 
             TextField("Search history…", text: Binding(
                 get: { model.historySearch },
@@ -62,11 +76,35 @@ struct SidebarHistoryView: View {
                                 .help("Run in a new tab")
                                 .padding(.trailing, SexiQLSpace.md)
                             }
+                            .contextMenu {
+                                Button("Run in a new tab") {
+                                    model.rerunHistory(entry)
+                                }
+                                Button("Load into editor") {
+                                    model.loadHistoryIntoEditor(entry)
+                                }
+                                Divider()
+                                Button("Delete", role: .destructive) {
+                                    model.deleteHistory(entry)
+                                }
+                            }
                         }
                     }
                     .padding(.bottom, SexiQLSpace.lg)
                 }
             }
+        }
+        .confirmationDialog(
+            "Clear all query history?",
+            isPresented: $showingClearConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Clear History", role: .destructive) {
+                model.clearHistory()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This cannot be undone.")
         }
     }
 
