@@ -23,10 +23,12 @@ final class ModelsTests: XCTestCase {
         let pg = factory.makeConnection(for: ConnectionProfile(name: "p", kind: .postgres))
         let my = factory.makeConnection(for: ConnectionProfile(name: "m", kind: .mysql))
         let sq = factory.makeConnection(for: ConnectionProfile(name: "s", kind: .sqlite))
+        let rd = factory.makeConnection(for: ConnectionProfile(name: "r", kind: .redis))
 
         XCTAssertEqual(pg.profile.kind, .postgres)
         XCTAssertEqual(my.profile.kind, .mysql)
         XCTAssertEqual(sq.profile.kind, .sqlite)
+        XCTAssertEqual(rd.profile.kind, .redis)
 
         let connected = await pg.isConnected()
         XCTAssertFalse(connected)
