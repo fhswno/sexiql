@@ -4,6 +4,7 @@ public enum DatabaseKind: String, Codable, Sendable, CaseIterable, Identifiable 
     case postgres
     case mysql
     case sqlite
+    case redis
 
     public var id: String { rawValue }
 
@@ -12,6 +13,7 @@ public enum DatabaseKind: String, Codable, Sendable, CaseIterable, Identifiable 
         case .postgres: "PostgreSQL"
         case .mysql: "MySQL"
         case .sqlite: "SQLite"
+        case .redis: "Redis"
         }
     }
 
@@ -20,6 +22,7 @@ public enum DatabaseKind: String, Codable, Sendable, CaseIterable, Identifiable 
         case .postgres: 5432
         case .mysql: 3306
         case .sqlite: 0
+        case .redis: 6379
         }
     }
 }
