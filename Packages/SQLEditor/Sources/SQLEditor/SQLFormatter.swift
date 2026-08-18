@@ -7,7 +7,8 @@ public struct SQLFormatter: Sendable {
         self.indentUnit = indentUnit
     }
 
-    public func format(_ sql: String) -> String {
+    public func format(_ sql: String, dialect: EditorDialect = .sql) -> String {
+        if dialect == .redis { return sql }
         let tokens = SQLLexer().tokenize(sql)
         var out = ""
         var i = 0
