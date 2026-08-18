@@ -8,6 +8,7 @@ final class TabEditorHostView: NSView {
     var onSaveQuery: ((UUID, String) -> Void)?
     var completionCatalog: (() -> SQLCompletionCatalog)?
     var onNeedColumns: ((String) -> Void)?
+    var dialectForTab: ((UUID) -> EditorDialect)?
 
     private(set) var selectTileCount: Int = 0
     private(set) var externalHighlightCount: Int = 0
@@ -95,6 +96,7 @@ final class TabEditorHostView: NSView {
         for id in openTabIDs where panes[id] == nil {
             createPane(id: id, text: texts[id] ?? "")
         }
+        applyDialects()
         applySelectionVisibility()
     }
 
@@ -137,6 +139,12 @@ final class TabEditorHostView: NSView {
         }
     }
 
+    func applyDialects() {
+        for (id, pane) in panes {
+            pane.scrollView.editorTextView.dialect = dialectForTab?(id) ?? .sql
+        }
+    }
+
     func setActionHandlers(
         onTextChange: @escaping (UUID, String) -> Void,
         onRun: @escaping (UUID, String) -> Void,
@@ -172,6 +180,7 @@ final class TabEditorHostView: NSView {
         let tv = scroll.editorTextView
         tv.string = text
         tv.delegate = bridge
+        tv.dialect = dialectForTab?(id) ?? .sql
         tv.highlightNow()
         externalHighlightCount += 1
         scroll.tileDocument()
@@ -282,6 +291,7 @@ struct TabEditorHostRepresentable: NSViewRepresentable {
     var onSaveQuery: (UUID, String) -> Void
     var completionCatalog: () -> SQLCompletionCatalog
     var onNeedColumns: (String) -> Void
+    var dialectForTab: (UUID) -> EditorDialect
     var onRegisterSQLProvider: ((TabEditorHostView) -> Void)?
 
     func makeCoordinator() -> Coordinator {
@@ -296,6 +306,8 @@ struct TabEditorHostRepresentable: NSViewRepresentable {
         context.coordinator.lastOpenIDs = openTabIDs
         context.coordinator.lastSelected = selectedTabID
         context.coordinator.lastEpoch = contentEpoch
+        host.dialectForTab = dialectForTab
+        host.applyDialects()
         return host
     }
 
@@ -317,6 +329,9 @@ struct TabEditorHostRepresentable: NSViewRepresentable {
             host.applyAllExternalTexts(texts)
             coord.lastEpoch = contentEpoch
         }
+
+        host.dialectForTab = dialectForTab
+        host.applyDialects()
     }
 
     @MainActor
