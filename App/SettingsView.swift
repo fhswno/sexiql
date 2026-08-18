@@ -64,6 +64,15 @@ struct SettingsView: View {
                     Section {
                         Toggle("Restore workspace on launch", isOn: restoreBinding)
                         Toggle("Confirm before disconnect", isOn: confirmBinding)
+                        Picker("Auto-limit SELECT", selection: resultRowLimitBinding) {
+                            Text("Off").tag(Optional<Int>.none)
+                            Text("100").tag(Optional(100))
+                            Text("1,000").tag(Optional(1000))
+                            Text("10,000").tag(Optional(10000))
+                        }
+                        Text("Appends LIMIT to top-level SELECT / WITH unless the query already has LIMIT or FETCH. Redis is never limited.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     } header: {
                         sectionHeader(.workspace)
                     }
@@ -208,6 +217,16 @@ struct SettingsView: View {
             get: { model.document.settings.confirmBeforeDisconnect },
             set: {
                 model.document.settings.confirmBeforeDisconnect = $0
+                model.saveWorkspace()
+            }
+        )
+    }
+
+    private var resultRowLimitBinding: Binding<Int?> {
+        Binding(
+            get: { model.document.settings.resultRowLimit },
+            set: {
+                model.document.settings.resultRowLimit = $0
                 model.saveWorkspace()
             }
         )
