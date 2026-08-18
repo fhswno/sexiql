@@ -54,4 +54,9 @@ final class SQLFormatterTests: XCTestCase {
     func testEmpty() {
         XCTAssertEqual(formatter.format("   "), "")
     }
+
+    func testRedisFormatIsNoOp() {
+        let sql = "set foo bar\nget foo"
+        XCTAssertEqual(formatter.format(sql, dialect: .redis), sql)
+    }
 }
