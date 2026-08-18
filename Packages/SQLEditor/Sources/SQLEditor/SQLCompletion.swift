@@ -113,11 +113,12 @@ public struct SQLCompletionEngine: Sendable {
         sql: String,
         cursor: Int,
         catalog: SQLCompletionCatalog,
-        force: Bool
+        force: Bool,
+        dialect: EditorDialect = .sql
     ) -> SQLCompletionResult {
         let units = Array(sql.utf16)
         let cursor = min(max(cursor, 0), units.count)
-        let tokens = SQLLexer().tokenize(sql)
+        let tokens = SQLLexer(dialect: dialect).tokenize(sql)
 
         if isInsideStringOrComment(cursor: cursor, tokens: tokens) {
             return .empty
