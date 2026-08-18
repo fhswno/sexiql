@@ -57,6 +57,13 @@ enum SettingsSearchIndex {
             keywords: ["disconnect", "confirm", "connection", "close"],
             section: .workspace
         ),
+        item(
+            id: "result-row-limit",
+            title: "Auto-limit SELECT",
+            subtitle: "Append LIMIT to SELECT / WITH (Off, 100, 1,000, 10,000)",
+            keywords: ["limit", "rows", "select", "auto", "1000", "fetch"],
+            section: .workspace
+        ),
     ]
 
     private static let layout: [SettingsSearchItem] = [
