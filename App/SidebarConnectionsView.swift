@@ -279,6 +279,7 @@ struct SidebarConnectionsView: View {
         case .postgres: "cylinder.split.1x2"
         case .mysql: "server.rack"
         case .sqlite: "internaldrive"
+        case .redis: "memorychip"
         }
     }
 
