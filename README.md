@@ -19,7 +19,7 @@ The SQL client macOS deserves. Supports Postgres, MySQL, SQLite and Redis in a f
 
 - **Four engines in one app.** Postgres, MySQL, SQLite and Redis — all speaking the raw wire protocol in pure Swift, with a typed data model instead of string soup.
 - **A clean, simple, powerful editor.** Syntax highlighting, line numbers, ⌘⏎ to run the selection, and tabs that switch instantly.
-- **Scalable, exportable, editable results** Streamed grids that stay fast on millions of rows, sort and filter, click-to-edit cells backed by a transactional UPDATE — with undo/redo.
+- **Exportable, editable results.** Rows stream into the grid as they arrive (held in memory; SELECT/WITH get an automatic LIMIT unless you turn it off), then sort, filter, and click-to-edit cells with undo/redo.
 - **Click to Explain** Plan trees for Postgres, MySQL, and SQLite, parsed into a tidy expandable view.
 - **Data in, data out.** CSV/JSON export, CSV import with column mapping, query history, saved queries.
 - **Connections that just work.** Save profiles with passwords stored in an encrypted vault, tunnel through SSH when you need to, and paste a `postgres://` URL to auto-fill the form.
