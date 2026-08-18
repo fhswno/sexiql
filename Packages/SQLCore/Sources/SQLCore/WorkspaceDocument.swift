@@ -147,6 +147,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
     public var aiEnabled: Bool
     public var ollamaBaseURL: String
     public var ollamaModel: String
+    public var resultRowLimit: Int?
 
     public init(
         tintName: String? = nil,
@@ -158,7 +159,8 @@ public struct UserSettings: Codable, Sendable, Equatable {
         copySelectedRowsFormat: CopySelectedRowsFormat = .tsv,
         aiEnabled: Bool = false,
         ollamaBaseURL: String = "http://127.0.0.1:11434",
-        ollamaModel: String = ""
+        ollamaModel: String = "",
+        resultRowLimit: Int? = 1000
     ) {
         self.tintName = tintName
         self.autoRestoreWorkspace = autoRestoreWorkspace
@@ -170,12 +172,14 @@ public struct UserSettings: Codable, Sendable, Equatable {
         self.aiEnabled = aiEnabled
         self.ollamaBaseURL = ollamaBaseURL
         self.ollamaModel = ollamaModel
+        self.resultRowLimit = resultRowLimit
     }
 
     private enum CodingKeys: String, CodingKey {
         case tintName, autoRestoreWorkspace, confirmBeforeDisconnect, layout, compactGrid, appearance
         case copySelectedRowsFormat
         case aiEnabled, ollamaBaseURL, ollamaModel
+        case resultRowLimit
     }
 
     public init(from decoder: Decoder) throws {
@@ -190,6 +194,11 @@ public struct UserSettings: Codable, Sendable, Equatable {
         aiEnabled = try container.decodeIfPresent(Bool.self, forKey: .aiEnabled) ?? false
         ollamaBaseURL = try container.decodeIfPresent(String.self, forKey: .ollamaBaseURL) ?? "http://127.0.0.1:11434"
         ollamaModel = try container.decodeIfPresent(String.self, forKey: .ollamaModel) ?? ""
+        if container.contains(.resultRowLimit) {
+            resultRowLimit = try container.decodeIfPresent(Int.self, forKey: .resultRowLimit)
+        } else {
+            resultRowLimit = 1000
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -204,6 +213,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
         try container.encode(aiEnabled, forKey: .aiEnabled)
         try container.encode(ollamaBaseURL, forKey: .ollamaBaseURL)
         try container.encode(ollamaModel, forKey: .ollamaModel)
+        try container.encode(resultRowLimit, forKey: .resultRowLimit)
     }
 }
 
@@ -213,23 +223,26 @@ public struct EditorTabState: Codable, Sendable, Equatable, Identifiable {
     public var connectionProfileID: UUID?
     public var sql: String
     public var titleIsCustom: Bool
+    public var fileURL: URL?
 
     public init(
         id: UUID = UUID(),
         title: String,
         connectionProfileID: UUID? = nil,
         sql: String = "",
-        titleIsCustom: Bool = false
+        titleIsCustom: Bool = false,
+        fileURL: URL? = nil
     ) {
         self.id = id
         self.title = title
         self.connectionProfileID = connectionProfileID
         self.sql = sql
         self.titleIsCustom = titleIsCustom
+        self.fileURL = fileURL
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, connectionProfileID, sql, titleIsCustom
+        case id, title, connectionProfileID, sql, titleIsCustom, fileURL
     }
 
     public init(from decoder: Decoder) throws {
@@ -239,6 +252,7 @@ public struct EditorTabState: Codable, Sendable, Equatable, Identifiable {
         connectionProfileID = try container.decodeIfPresent(UUID.self, forKey: .connectionProfileID)
         sql = try container.decodeIfPresent(String.self, forKey: .sql) ?? ""
         titleIsCustom = try container.decodeIfPresent(Bool.self, forKey: .titleIsCustom) ?? false
+        fileURL = try container.decodeIfPresent(URL.self, forKey: .fileURL)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -248,6 +262,7 @@ public struct EditorTabState: Codable, Sendable, Equatable, Identifiable {
         try container.encodeIfPresent(connectionProfileID, forKey: .connectionProfileID)
         try container.encode(sql, forKey: .sql)
         try container.encode(titleIsCustom, forKey: .titleIsCustom)
+        try container.encodeIfPresent(fileURL, forKey: .fileURL)
     }
 
     public var isDefaultUntitledTitle: Bool {
