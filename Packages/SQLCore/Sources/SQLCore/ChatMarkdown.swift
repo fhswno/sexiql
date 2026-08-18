@@ -50,7 +50,7 @@ public enum ChatMarkdownParser: Sendable {
             if !lang.isEmpty {
                 let sqlLangs: Set<String> = [
                     "sql", "postgresql", "postgres", "pgsql", "mysql", "mariadb",
-                    "sqlite", "tsql", "plsql", "psql",
+                    "sqlite", "tsql", "plsql", "psql", "redis",
                 ]
                 if sqlLangs.contains(lang) { return true }
             }
