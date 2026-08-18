@@ -23,6 +23,33 @@ public enum MySQLWireError: Error, LocalizedError, Sendable, Equatable {
         case .protocolError(let message): message
         }
     }
+
+    public var isQueryInterrupted: Bool {
+        switch self {
+        case .serverError(let code, let message, let state):
+            if code == MySQLCancel.queryInterruptedCode || state == "70100" { return true }
+            let text = message.lowercased()
+            return text.contains("interrupted")
+        default:
+            return false
+        }
+    }
+}
+
+public enum MySQLCancel: Sendable {
+    public static let queryInterruptedCode = 1317
+    public static let noSuchThreadCode = 1094
+
+    public static func killQuerySQL(connectionID: UInt32) -> String {
+        "KILL QUERY \(connectionID)"
+    }
+
+    public static func isBenignKillError(_ error: MySQLWireError) -> Bool {
+        if case .serverError(let code, _, _) = error, code == noSuchThreadCode {
+            return true
+        }
+        return false
+    }
 }
 
 public struct MySQLPacket: Sendable, Equatable {
