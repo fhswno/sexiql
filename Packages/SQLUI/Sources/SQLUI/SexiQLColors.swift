@@ -28,6 +28,7 @@ public enum SexiQLColors {
         case "postgres", "postgresql": return Color(red: 0.33, green: 0.47, blue: 0.75)
         case "mysql": return Color(red: 0.90, green: 0.55, blue: 0.20)
         case "sqlite": return Color(red: 0.35, green: 0.62, blue: 0.85)
+        case "redis": return Color(red: 0.80, green: 0.25, blue: 0.22)
         default: return .accentColor
         }
     }
