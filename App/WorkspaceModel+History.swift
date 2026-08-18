@@ -30,6 +30,16 @@ extension WorkspaceModel {
         return document.history.filter { $0.sql.localizedCaseInsensitiveContains(query) }
     }
 
+    func deleteHistory(_ entry: QueryHistoryEntry) {
+        document.history.removeAll { $0.id == entry.id }
+        saveWorkspace()
+    }
+
+    func clearHistory() {
+        document.history.removeAll()
+        saveWorkspace()
+    }
+
     func loadHistoryIntoEditor(_ entry: QueryHistoryEntry) {
         guard let tabID = selectedTabID else { return }
         setTabTextExternal(tabID, sql: entry.sql)
