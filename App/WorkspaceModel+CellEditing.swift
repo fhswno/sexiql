@@ -16,7 +16,12 @@ extension WorkspaceModel {
         defer { result.isResolvingEditable = false }
         guard let connection = await connectionManager.connection(for: profileID) else { return }
         do {
-            result.editableTable = try await EditableTableResolver().resolve(for: connection, columns: result.sqlColumns)
+            if connection.profile.kind == .redis {
+                let tokens = RedisCommand.tokenize(result.label)
+                result.editableTable = RedisEdit.table(forCommand: tokens, columns: result.sqlColumns)
+            } else {
+                result.editableTable = try await EditableTableResolver().resolve(for: connection, columns: result.sqlColumns)
+            }
         } catch {
             result.editableTable = nil
         }
@@ -215,18 +220,31 @@ extension WorkspaceModel {
             return
         }
         let kind = profileKind(profileID)
-        let (sql, parameters) = Self.updateSQL(
-            for: edit.table,
-            column: edit.column,
-            value: edit.newValue,
-            primaryKeyValues: edit.primaryKeyValues,
-            kind: kind
-        )
         do {
-            try await withTransaction(on: connection) {
-                let update = try await connection.execute(sql, parameters: parameters)
-                guard update.affectedRowCount == 1 else {
-                    throw RowWriteError.unexpectedCount(update.affectedRowCount ?? 0, verb: "UPDATE")
+            if kind == .redis {
+                guard let command = RedisEdit.updateCommand(
+                    table: edit.table,
+                    column: edit.column,
+                    newValue: edit.newValue,
+                    primaryKeyValues: edit.primaryKeyValues
+                ) else {
+                    editingMessage = "That Redis field is not editable."
+                    return
+                }
+                _ = try await connection.execute(command)
+            } else {
+                let (sql, parameters) = Self.updateSQL(
+                    for: edit.table,
+                    column: edit.column,
+                    value: edit.newValue,
+                    primaryKeyValues: edit.primaryKeyValues,
+                    kind: kind
+                )
+                try await withTransaction(on: connection) {
+                    let update = try await connection.execute(sql, parameters: parameters)
+                    guard update.affectedRowCount == 1 else {
+                        throw RowWriteError.unexpectedCount(update.affectedRowCount ?? 0, verb: "UPDATE")
+                    }
                 }
             }
             let row = rowIndex(matching: edit.primaryKeyValues, table: edit.table, in: result.model) ?? edit.row
@@ -270,8 +288,28 @@ extension WorkspaceModel {
             result.message = "Fill required columns to save."
             return
         }
-        let sql = CellInsertSQL.explicit(table: table, columnNames: names, kind: kind)
         do {
+            if kind == .redis {
+                guard let command = RedisEdit.insertCommand(table: table, columns: names, values: params) else {
+                    result.message = "Cannot insert that Redis value."
+                    return
+                }
+                _ = try await connection.execute(command)
+                let saved = (row: SQLRow(values: values), pk: primaryKeyValues(table: table, values: values, columns: table.columns))
+                result.model.removeRow(at: draft)
+                result.model.insertRow(saved.row, at: draft)
+                result.draftRowIndex = nil
+                result.message = nil
+                result.undoStack = result.undoStack.map { $0.shifting(insertedRow: draft) }
+                result.redoStack = []
+                result.undoStack.append(
+                    .insert(
+                        RowMutation(table: table, row: draft, values: saved.row.values, primaryKeyValues: saved.pk)
+                    )
+                )
+                return
+            }
+            let sql = CellInsertSQL.explicit(table: table, columnNames: names, kind: kind)
             let saved = try await withTransaction(on: connection) {
                 let inserted = try await connection.execute(sql, parameters: params)
                 if let mapped = mapReturnedRow(inserted, to: result.sqlColumns) {
@@ -436,11 +474,20 @@ extension WorkspaceModel {
         }
         guard !planned.isEmpty else { return }
         do {
-            try await withTransaction(on: connection) {
+            if kind == .redis {
                 for item in planned {
-                    let deleted = try await connection.execute(sql, parameters: item.pk)
-                    guard deleted.affectedRowCount == 1 else {
-                        throw RowWriteError.unexpectedCount(deleted.affectedRowCount ?? 0, verb: "DELETE")
+                    guard let command = RedisEdit.deleteCommand(table: table, primaryKeyValues: item.pk) else {
+                        throw RowWriteError.missingPrimaryKey
+                    }
+                    _ = try await connection.execute(command)
+                }
+            } else {
+                try await withTransaction(on: connection) {
+                    for item in planned {
+                        let deleted = try await connection.execute(sql, parameters: item.pk)
+                        guard deleted.affectedRowCount == 1 else {
+                            throw RowWriteError.unexpectedCount(deleted.affectedRowCount ?? 0, verb: "DELETE")
+                        }
                     }
                 }
             }
@@ -472,13 +519,25 @@ extension WorkspaceModel {
             return
         }
         let kind = profileKind(profileID)
-        let sql = CellInsertSQL.explicit(table: mutation.table, columnNames: mutation.table.columns, kind: kind)
         do {
-            try await withTransaction(on: connection) {
-                let inserted = try await connection.execute(sql, parameters: mutation.values)
-                let count = inserted.affectedRowCount ?? inserted.rows.count
-                guard count == 1 || !inserted.rows.isEmpty else {
-                    throw RowWriteError.unexpectedCount(count, verb: "INSERT")
+            if kind == .redis {
+                guard let command = RedisEdit.insertCommand(
+                    table: mutation.table,
+                    columns: mutation.table.columns,
+                    values: mutation.values
+                ) else {
+                    editingMessage = "Cannot insert that Redis value."
+                    return
+                }
+                _ = try await connection.execute(command)
+            } else {
+                let sql = CellInsertSQL.explicit(table: mutation.table, columnNames: mutation.table.columns, kind: kind)
+                try await withTransaction(on: connection) {
+                    let inserted = try await connection.execute(sql, parameters: mutation.values)
+                    let count = inserted.affectedRowCount ?? inserted.rows.count
+                    guard count == 1 || !inserted.rows.isEmpty else {
+                        throw RowWriteError.unexpectedCount(count, verb: "INSERT")
+                    }
                 }
             }
             let index = min(max(mutation.row, 0), result.model.rows.count)
@@ -502,12 +561,23 @@ extension WorkspaceModel {
             return
         }
         let kind = profileKind(profileID)
-        let sql = CellDeleteSQL.statement(table: mutation.table, kind: kind)
         do {
-            try await withTransaction(on: connection) {
-                let deleted = try await connection.execute(sql, parameters: mutation.primaryKeyValues)
-                guard deleted.affectedRowCount == 1 else {
-                    throw RowWriteError.unexpectedCount(deleted.affectedRowCount ?? 0, verb: "DELETE")
+            if kind == .redis {
+                guard let command = RedisEdit.deleteCommand(
+                    table: mutation.table,
+                    primaryKeyValues: mutation.primaryKeyValues
+                ) else {
+                    editingMessage = "Cannot delete that Redis value."
+                    return
+                }
+                _ = try await connection.execute(command)
+            } else {
+                let sql = CellDeleteSQL.statement(table: mutation.table, kind: kind)
+                try await withTransaction(on: connection) {
+                    let deleted = try await connection.execute(sql, parameters: mutation.primaryKeyValues)
+                    guard deleted.affectedRowCount == 1 else {
+                        throw RowWriteError.unexpectedCount(deleted.affectedRowCount ?? 0, verb: "DELETE")
+                    }
                 }
             }
             let row = rowIndex(matching: mutation.primaryKeyValues, table: mutation.table, in: result.model)
@@ -625,6 +695,9 @@ extension WorkspaceModel {
         on connection: any DatabaseConnection,
         _ body: () async throws -> T
     ) async throws -> T {
+        if connection.profile.kind == .redis {
+            return try await body()
+        }
         _ = try await connection.execute("BEGIN")
         do {
             let value = try await body()
