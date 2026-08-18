@@ -49,6 +49,21 @@ final class SQLLimitGuardTests: XCTestCase {
         XCTAssertEqual(out.sql, sql)
     }
 
+    func testNilOrNonPositiveLimitIsNoOp() {
+        let sql = "SELECT * FROM t"
+        XCTAssertFalse(guardLimit.apply(sql, limit: nil).didLimit)
+        XCTAssertEqual(guardLimit.apply(sql, limit: nil).sql, sql)
+        XCTAssertFalse(guardLimit.apply(sql, limit: 0).didLimit)
+        XCTAssertEqual(guardLimit.apply(sql, limit: 0).sql, sql)
+        XCTAssertFalse(guardLimit.apply(sql, limit: -1).didLimit)
+    }
+
+    func testCustomLimit() {
+        let out = guardLimit.apply("SELECT * FROM t", limit: 100)
+        XCTAssertTrue(out.didLimit)
+        XCTAssertEqual(out.sql, "SELECT * FROM t LIMIT 100")
+    }
+
     func testExistingLimitWithJSONOperatorUnchanged() {
         let sql = """
         SELECT id FROM q_events
