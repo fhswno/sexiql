@@ -11,6 +11,7 @@ final class WorkspaceDocumentTests: XCTestCase {
         XCTAssertTrue(doc.settings.layout.sidebarVisible)
         XCTAssertFalse(doc.settings.layout.inspectorVisible)
         XCTAssertEqual(doc.settings.layout.sidebarMode, .connections)
+        XCTAssertEqual(doc.settings.resultRowLimit, 1000)
     }
 
     func testLayoutStateRoundTrip() throws {
@@ -71,6 +72,34 @@ final class WorkspaceDocumentTests: XCTestCase {
         XCTAssertFalse(settings.confirmBeforeDisconnect)
         XCTAssertEqual(settings.appearance, .system)
         XCTAssertEqual(settings.copySelectedRowsFormat, .tsv)
+        XCTAssertEqual(settings.resultRowLimit, 1000)
+    }
+
+    func testResultRowLimitRoundTripAndOff() throws {
+        let limited = UserSettings(resultRowLimit: 10000)
+        let limitedDecoded = try JSONDecoder().decode(UserSettings.self, from: try JSONEncoder().encode(limited))
+        XCTAssertEqual(limitedDecoded.resultRowLimit, 10000)
+
+        let off = UserSettings(resultRowLimit: nil)
+        let offDecoded = try JSONDecoder().decode(UserSettings.self, from: try JSONEncoder().encode(off))
+        XCTAssertNil(offDecoded.resultRowLimit)
+
+        let explicitNull = """
+        {"resultRowLimit":null}
+        """.data(using: .utf8)!
+        XCTAssertNil(try JSONDecoder().decode(UserSettings.self, from: explicitNull).resultRowLimit)
+    }
+
+    func testEditorTabFileURLDecodesDefaultNil() throws {
+        let legacy = """
+        {"id":"00000000-0000-0000-0000-000000000001","title":"old","sql":"SELECT 1"}
+        """.data(using: .utf8)!
+        let tab = try JSONDecoder().decode(EditorTabState.self, from: legacy)
+        XCTAssertNil(tab.fileURL)
+
+        let withFile = EditorTabState(title: "q", fileURL: URL(fileURLWithPath: "/tmp/q.sql"))
+        let decoded = try JSONDecoder().decode(EditorTabState.self, from: try JSONEncoder().encode(withFile))
+        XCTAssertEqual(decoded.fileURL?.path, "/tmp/q.sql")
     }
 
     func testCopySelectedRowsFormatRoundTrip() throws {
