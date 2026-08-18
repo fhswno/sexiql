@@ -13,6 +13,8 @@ struct ResultsPaneView: View {
     @State private var sortOrdinal: Int?
     @State private var sortAscending = true
     @State private var selectedRowIDs: Set<Int> = []
+    @State private var inspectedCell: CellEditTarget?
+    @State private var requestedEdit: CellEditTarget?
     @State private var copyFeedback: String?
 
     var body: some View {
@@ -43,6 +45,7 @@ struct ResultsPaneView: View {
         }
         .onChange(of: selectedResultIdentity) { _, _ in
             selectedRowIDs = []
+            inspectedCell = nil
         }
     }
 
@@ -195,7 +198,9 @@ struct ResultsPaneView: View {
                                 rows: Array(ids)
                             )
                         },
-                        onCopied: { showCopyFeedback($0) }
+                        onCopied: { showCopyFeedback($0) },
+                        inspectedCell: $inspectedCell,
+                        requestedEdit: $requestedEdit
                     )
                     .onAppear { registerRowHandlers(result, index: index) }
                     .onChange(of: selectedRowIDs) { _, _ in
@@ -212,6 +217,9 @@ struct ResultsPaneView: View {
                         model.deleteResultRowsHandler = nil
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if model.inspectorVisible {
+                        inspectorStrip(result)
+                    }
                     statusBar(result)
                 }
             case .failed:
@@ -351,6 +359,39 @@ struct ResultsPaneView: View {
         }
     }
 
+    @ViewBuilder
+    private func inspectorStrip(_ result: StatementResult) -> some View {
+        let target = inspectedCell
+        let row = target?.modelRow
+        let column = target?.column
+        let value: SQLValue = {
+            guard let row, let column, result.model.rows.indices.contains(row) else { return .null }
+            return result.model[row, column]
+        }()
+        let columnName = column.flatMap { ordinal in
+            result.model.columns.first(where: { $0.ordinal == ordinal })?.name
+        } ?? "Value"
+        let columnType = column.flatMap { ordinal in
+            result.model.columns.first(where: { $0.ordinal == ordinal })?.dataType
+        } ?? ""
+        ValueInspectorView(
+            columnName: columnName,
+            columnType: columnType,
+            value: value,
+            onCopy: {
+                copyToPasteboard(value == .null ? "NULL" : value.displayString)
+                showCopyFeedback(1)
+            },
+            onEdit: result.editableTable != nil
+                ? {
+                    guard let row, let column else { return }
+                    requestedEdit = CellEditTarget(modelRow: row, column: column)
+                }
+                : nil,
+            onClose: { model.inspectorVisible = false }
+        )
+    }
+
     private func resultIndex(of result: StatementResult) -> Int {
         (model.results[tabID] ?? []).firstIndex(where: { $0.id == result.id }) ?? 0
     }
@@ -453,6 +494,8 @@ struct ResultsPaneView: View {
                         .lineLimit(1)
                         .foregroundStyle(.secondary)
                 }
+
+                inspectorToggle()
             }
             .font(SexiQLType.meta)
             .foregroundStyle(.secondary)
@@ -465,6 +508,20 @@ struct ResultsPaneView: View {
     private func statusDot() -> some View {
         Text("  ·  ")
             .foregroundStyle(.tertiary)
+    }
+
+    private func inspectorToggle() -> some View {
+        Button {
+            if inspectedCell == nil, let row = selectedRowIDs.min() {
+                inspectedCell = CellEditTarget(modelRow: row, column: 0)
+            }
+            model.toggleInspector()
+        } label: {
+            Image(systemName: model.inspectorVisible ? "info.circle.fill" : "info.circle")
+        }
+        .buttonStyle(.borderless)
+        .help(model.inspectorVisible ? "Hide value inspector" : "Inspect value (Space)")
+        .padding(.leading, SexiQLSpace.sm)
     }
 }
 
