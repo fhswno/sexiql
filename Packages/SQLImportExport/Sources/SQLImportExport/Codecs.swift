@@ -7,6 +7,93 @@ public enum ImportExportError: Error, Sendable, Equatable {
     case emptyFile
 }
 
+public enum CSVTextEncoding: String, Sendable, CaseIterable, Identifiable, Equatable {
+    case utf8
+    case utf16
+    case windows1252
+    case isoLatin1
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .utf8: "UTF-8"
+        case .utf16: "UTF-16"
+        case .windows1252: "Windows-1252"
+        case .isoLatin1: "ISO-8859-1"
+        }
+    }
+
+    public var encoding: String.Encoding {
+        switch self {
+        case .utf8: .utf8
+        case .utf16: .utf16
+        case .windows1252: .windowsCP1252
+        case .isoLatin1: .isoLatin1
+        }
+    }
+
+    public static func from(_ encoding: String.Encoding) -> CSVTextEncoding {
+        switch encoding {
+        case .utf16, .utf16BigEndian, .utf16LittleEndian: .utf16
+        case .windowsCP1252: .windows1252
+        case .isoLatin1: .isoLatin1
+        default: .utf8
+        }
+    }
+}
+
+public enum CSVDelimiterKind: String, Sendable, CaseIterable, Identifiable, Equatable {
+    case comma
+    case semicolon
+    case tab
+    case pipe
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .comma: "Comma"
+        case .semicolon: "Semicolon"
+        case .tab: "Tab"
+        case .pipe: "Pipe"
+        }
+    }
+
+    public var character: Character {
+        switch self {
+        case .comma: ","
+        case .semicolon: ";"
+        case .tab: "\t"
+        case .pipe: "|"
+        }
+    }
+
+    public static func from(_ character: Character) -> CSVDelimiterKind {
+        switch character {
+        case ";": .semicolon
+        case "\t": .tab
+        case "|": .pipe
+        default: .comma
+        }
+    }
+}
+
+public struct CSVDialect: Sendable, Equatable {
+    public var delimiter: Character
+    public var quote: Character
+    public var encoding: String.Encoding
+
+    public static let csv = CSVDialect(delimiter: ",", quote: "\"", encoding: .utf8)
+    public static let tsv = CSVDialect(delimiter: "\t", quote: "\"", encoding: .utf8)
+
+    public init(delimiter: Character = ",", quote: Character = "\"", encoding: String.Encoding = .utf8) {
+        self.delimiter = delimiter
+        self.quote = quote
+        self.encoding = encoding
+    }
+}
+
 public enum CSVCodec: Sendable {
     public static func encode(columns: [String], rows: [[SQLValue]]) -> String {
         var lines: [String] = []
@@ -18,6 +105,10 @@ public enum CSVCodec: Sendable {
     }
 
     public static func parse(_ text: String) throws -> [[String]] {
+        try parse(text, dialect: .csv)
+    }
+
+    public static func parse(_ text: String, dialect: CSVDialect) throws -> [[String]] {
         var rows: [[String]] = []
         var row: [String] = []
         var field = ""
@@ -26,6 +117,8 @@ public enum CSVCodec: Sendable {
 
         let scalars = text.unicodeScalars
         var index = scalars.startIndex
+        let delimiter = dialect.delimiter.unicodeScalars.first ?? ","
+        let quote = dialect.quote.unicodeScalars.first ?? "\""
 
         func finishField() throws {
             row.append(field)
@@ -41,10 +134,10 @@ public enum CSVCodec: Sendable {
         while index < scalars.endIndex {
             let scalar = scalars[index]
             if inQuotes {
-                if scalar == "\"" {
+                if scalar == quote {
                     let next = scalars.index(after: index)
-                    if next < scalars.endIndex, scalars[next] == "\"" {
-                        field.append("\"")
+                    if next < scalars.endIndex, scalars[next] == quote {
+                        field.unicodeScalars.append(quote)
                         index = next
                     } else {
                         inQuotes = false
@@ -53,23 +146,20 @@ public enum CSVCodec: Sendable {
                     if scalar == "\n" { line += 1 }
                     field.unicodeScalars.append(scalar)
                 }
-            } else {
-                switch scalar {
-                case "\"":
-                    guard field.isEmpty else {
-                        throw ImportExportError.malformedCSV(line: line, message: "quote inside unquoted field")
-                    }
-                    inQuotes = true
-                case ",":
-                    try finishField()
-                case "\r":
-                    break
-                case "\n":
-                    try finishRow()
-                    line += 1
-                default:
-                    field.unicodeScalars.append(scalar)
+            } else if scalar == quote {
+                guard field.isEmpty else {
+                    throw ImportExportError.malformedCSV(line: line, message: "quote inside unquoted field")
                 }
+                inQuotes = true
+            } else if scalar == delimiter {
+                try finishField()
+            } else if scalar == "\r" {
+                // ignore
+            } else if scalar == "\n" {
+                try finishRow()
+                line += 1
+            } else {
+                field.unicodeScalars.append(scalar)
             }
             index = scalars.index(after: index)
         }
@@ -80,6 +170,56 @@ public enum CSVCodec: Sendable {
             try finishRow()
         }
         return rows
+    }
+
+    public static func decode(_ data: Data, encoding: String.Encoding) -> String? {
+        if encoding == .utf8, data.starts(with: [0xEF, 0xBB, 0xBF]) {
+            return String(data: data.dropFirst(3), encoding: .utf8)
+        }
+        return String(data: data, encoding: encoding)
+    }
+
+    public static func sniff(_ data: Data) -> CSVDialect {
+        let encoding = sniffEncoding(data)
+        let text = decode(data, encoding: encoding) ?? String(decoding: data, as: UTF8.self)
+        return CSVDialect(delimiter: sniffDelimiter(in: text), quote: "\"", encoding: encoding)
+    }
+
+    public static func sniffEncoding(_ data: Data) -> String.Encoding {
+        if data.starts(with: [0xEF, 0xBB, 0xBF]) { return .utf8 }
+        if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) { return .utf16 }
+        if String(data: data, encoding: .utf8) != nil { return .utf8 }
+        if String(data: data, encoding: .windowsCP1252) != nil { return .windowsCP1252 }
+        return .isoLatin1
+    }
+
+    public static func sniffDelimiter(in text: String) -> Character {
+        let sample = text.split(whereSeparator: \.isNewline).prefix(8).joined(separator: "\n")
+        let candidates: [Character] = [",", ";", "\t", "|"]
+        var best: Character = ","
+        var bestCount = -1
+        for candidate in candidates {
+            let count = unquotedCount(of: candidate, in: sample)
+            if count > bestCount {
+                best = candidate
+                bestCount = count
+            }
+        }
+        return bestCount > 0 ? best : ","
+    }
+
+    private static func unquotedCount(of delimiter: Character, in text: String) -> Int {
+        var count = 0
+        var inQuotes = false
+        let quote: Character = "\""
+        for character in text {
+            if character == quote {
+                inQuotes.toggle()
+            } else if !inQuotes, character == delimiter {
+                count += 1
+            }
+        }
+        return count
     }
 
     private static func escape(_ field: String) -> String {
