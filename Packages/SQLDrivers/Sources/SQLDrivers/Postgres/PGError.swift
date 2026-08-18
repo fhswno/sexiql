@@ -24,4 +24,18 @@ public struct PGError: Error, LocalizedError, Sendable, Equatable {
         }
         return text
     }
+
+    public var isRetryableSendFailure: Bool {
+        guard code == "08006" else { return false }
+        let text = message.lowercased()
+        if text.contains("read")
+            || text.contains("response")
+            || text.contains("server closed")
+            || text.contains("closed by server") {
+            return false
+        }
+        return text.contains("write")
+            || text.contains("output stream")
+            || text.contains("not connected")
+    }
 }
