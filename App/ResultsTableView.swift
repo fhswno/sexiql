@@ -17,6 +17,8 @@ struct ResultsTableView: View {
     var onEditCell: ((Int, Int, SQLValue) -> Void)?
     var onDeleteRows: ((Set<Int>) -> Void)?
     var onCopied: ((Int) -> Void)?
+    @Binding var inspectedCell: CellEditTarget?
+    @Binding var requestedEdit: CellEditTarget?
 
     @Environment(WorkspaceModel.self) private var workspace
 
@@ -78,6 +80,18 @@ struct ResultsTableView: View {
                 .onReceive(NotificationCenter.default.publisher(for: .sexiqlCopySelectedRows)) { _ in
                     copySelected(format: workspace.copySelectedRowsFormat)
                 }
+                .onKeyPress(.space) {
+                    guard editing == nil else { return .ignored }
+                    inspectCurrentCell()
+                    return .handled
+                }
+                .onExitCommand {
+                    if editing != nil {
+                        cancelEdit()
+                    } else if workspace.inspectorVisible {
+                        workspace.inspectorVisible = false
+                    }
+                }
                 .onDisappear {
                     workspace.copySelectedRowsHandler = nil
                 }
@@ -91,6 +105,12 @@ struct ResultsTableView: View {
             }
                 .onChange(of: columnSignature) { _, _ in
                     pruneWidthOverrides()
+                }
+                .onChange(of: requestedEdit) { _, target in
+                    if let target {
+                        beginEdit(row: target.modelRow, column: target.column)
+                        requestedEdit = nil
+                    }
                 }
                 .onChange(of: filterText) { _, _ in
                     pruneSelection(visibleIDs: Set(displayRows.map(\.id)))
@@ -389,6 +409,10 @@ struct ResultsTableView: View {
                     Button("Copy as CSV") { copyFromMenu(rowID: row.id, format: .csv) }
                     Button("Copy as JSON") { copyFromMenu(rowID: row.id, format: .json) }
                     Button("Copy as VALUES") { copyFromMenu(rowID: row.id, valuesSQL: true) }
+                    Button("Inspect Value") {
+                        inspectedCell = CellEditTarget(modelRow: row.id, column: column.ordinal)
+                        workspace.inspectorVisible = true
+                    }
                     if isEditable {
                         Divider()
                         Button("Edit…") {
@@ -547,9 +571,23 @@ struct ResultsTableView: View {
                 displayIDs: displayIDs
             )
         )
+        if let column {
+            inspectedCell = CellEditTarget(modelRow: id, column: column)
+        }
         if isDouble, isEditable, let column, flags.isEmpty {
             beginEdit(row: id, column: column)
         }
+    }
+
+    private func inspectCurrentCell() {
+        if inspectedCell == nil {
+            let row = selection.anchorID ?? selectedIDs.first ?? lastClickID
+            let column = lastClickColumn ?? model.columns.first?.ordinal
+            if let row, let column {
+                inspectedCell = CellEditTarget(modelRow: row, column: column)
+            }
+        }
+        workspace.inspectorVisible = true
     }
 
     private func clearSelection() {
