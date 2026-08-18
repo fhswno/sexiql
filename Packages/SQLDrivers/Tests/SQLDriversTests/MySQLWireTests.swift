@@ -110,4 +110,34 @@ final class MySQLWireTests: XCTestCase {
         XCTAssertEqual(message, "syntax error")
         XCTAssertEqual(state, "42000")
     }
+
+    func testKillQuerySQL() {
+        XCTAssertEqual(MySQLCancel.killQuerySQL(connectionID: 42), "KILL QUERY 42")
+        XCTAssertEqual(MySQLCancel.queryInterruptedCode, 1317)
+        XCTAssertEqual(MySQLCancel.noSuchThreadCode, 1094)
+    }
+
+    func testQueryInterruptedClassification() {
+        let interrupted = MySQLWireError.serverError(
+            code: 1317,
+            message: "Query execution was interrupted",
+            state: "70100"
+        )
+        XCTAssertTrue(interrupted.isQueryInterrupted)
+        XCTAssertFalse(MySQLCancel.isBenignKillError(interrupted))
+
+        let byState = MySQLWireError.serverError(code: 1, message: "stopped", state: "70100")
+        XCTAssertTrue(byState.isQueryInterrupted)
+
+        let byMessage = MySQLWireError.serverError(code: 0, message: "Query execution was interrupted", state: nil)
+        XCTAssertTrue(byMessage.isQueryInterrupted)
+
+        let syntax = MySQLWireError.serverError(code: 1064, message: "syntax error", state: "42000")
+        XCTAssertFalse(syntax.isQueryInterrupted)
+        XCTAssertFalse(MySQLCancel.isBenignKillError(syntax))
+
+        let gone = MySQLWireError.serverError(code: 1094, message: "Unknown thread id: 1", state: "HY000")
+        XCTAssertTrue(MySQLCancel.isBenignKillError(gone))
+        XCTAssertFalse(gone.isQueryInterrupted)
+    }
 }
