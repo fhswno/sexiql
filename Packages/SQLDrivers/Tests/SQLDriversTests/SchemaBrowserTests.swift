@@ -28,6 +28,10 @@ final class SchemaBrowserTests: XCTestCase {
         )
         let key = SchemaObject(schema: "hash", name: "user:1", kind: .key)
         XCTAssertEqual(SchemaBrowser.selectAllSQL(key, kind: .redis), "HGETALL user:1")
+        XCTAssertEqual(
+            SchemaBrowser.selectAllSQL(obj, kind: .postgres, limit: nil),
+            "SELECT * FROM \"public\".\"t\";"
+        )
     }
 
     func testCancelRequestPacket() {
