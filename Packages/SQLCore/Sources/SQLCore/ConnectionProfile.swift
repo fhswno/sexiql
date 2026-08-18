@@ -88,6 +88,7 @@ public struct ConnectionProfile: Codable, Sendable, Equatable, Identifiable {
     public var tlsServerName: String?
     public var useSSH: Bool
     public var ssh: SSHTunnelConfiguration?
+    public var readOnly: Bool
     public var createdAt: Date
 
     public init(
@@ -102,6 +103,7 @@ public struct ConnectionProfile: Codable, Sendable, Equatable, Identifiable {
         tlsServerName: String? = nil,
         useSSH: Bool = false,
         ssh: SSHTunnelConfiguration? = nil,
+        readOnly: Bool = false,
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -115,13 +117,14 @@ public struct ConnectionProfile: Codable, Sendable, Equatable, Identifiable {
         self.tlsServerName = tlsServerName
         self.useSSH = useSSH
         self.ssh = ssh
+        self.readOnly = readOnly
         self.createdAt = createdAt
     }
 
     public var credentialAccount: String { id.uuidString }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, kind, host, port, database, username, tlsMode, tlsServerName, useSSH, ssh, createdAt
+        case id, name, kind, host, port, database, username, tlsMode, tlsServerName, useSSH, ssh, readOnly, createdAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -137,6 +140,7 @@ public struct ConnectionProfile: Codable, Sendable, Equatable, Identifiable {
         tlsServerName = try container.decodeIfPresent(String.self, forKey: .tlsServerName)
         useSSH = try container.decodeIfPresent(Bool.self, forKey: .useSSH) ?? false
         ssh = try container.decodeIfPresent(SSHTunnelConfiguration.self, forKey: .ssh)
+        readOnly = try container.decodeIfPresent(Bool.self, forKey: .readOnly) ?? false
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
     }
 
@@ -153,6 +157,7 @@ public struct ConnectionProfile: Codable, Sendable, Equatable, Identifiable {
         try container.encodeIfPresent(tlsServerName, forKey: .tlsServerName)
         try container.encode(useSSH, forKey: .useSSH)
         try container.encodeIfPresent(ssh, forKey: .ssh)
+        try container.encode(readOnly, forKey: .readOnly)
         try container.encode(createdAt, forKey: .createdAt)
     }
 }
