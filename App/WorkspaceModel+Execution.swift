@@ -229,99 +229,109 @@ extension WorkspaceModel {
                 return
             }
             let state = states[index]
-            do {
-                guard let connection = await awaitConnection(profileID) else {
-                    state.status = .failed
-                    state.message = "Not connected"
-                    return
-                }
-                let guarded = SQLLimitGuard().apply(statement.text)
-                if guarded.didLimit {
-                    state.appliedLimit = SQLLimitGuard.defaultLimit
-                }
-                if SQLStreamability.isStreamable(statement.text) {
-                    state.status = .streaming
-                    let streamed = try await connection.stream(guarded.sql)
-                    state.sqlColumns = streamed.columns
-                    state.model = ResultSetModel(columns: streamed.columns.map {
-                        GridColumn(ordinal: $0.ordinal, name: $0.name, dataType: $0.dataType)
-                    })
-                    let outcome = await StreamingAdapter().consume(streamed.rows, initialColumns: state.model.columns) { model in
-                        state.model = model
-                    }
-                    if Task.isCancelled {
-                        state.status = .cancelled
-                        let n = state.model.rows.count
-                        state.message = n > 0 ? "Cancelled — \(n) row\(n == 1 ? "" : "s")" : "Cancelled"
-                        state.duration = Date().timeIntervalSince(start)
-                        markRemainingCancelled(states, after: index)
+            var retriedSend = false
+            statementAttempt: while true {
+                do {
+                    guard let connection = await awaitConnection(profileID) else {
+                        state.status = .failed
+                        state.message = "Not connected"
                         return
                     }
-                    switch outcome {
-                    case .success(let finalModel):
-                        state.model = finalModel
-                        state.status = .complete
-                    case .failure(let error):
-                        if SQLStreamability.isCancellation(error) {
+                    let guarded = SQLLimitGuard().apply(statement.text)
+                    if guarded.didLimit {
+                        state.appliedLimit = SQLLimitGuard.defaultLimit
+                    }
+                    if SQLStreamability.isStreamable(statement.text) {
+                        state.status = .streaming
+                        let streamed = try await connection.stream(guarded.sql)
+                        state.sqlColumns = streamed.columns
+                        state.model = ResultSetModel(columns: streamed.columns.map {
+                            GridColumn(ordinal: $0.ordinal, name: $0.name, dataType: $0.dataType)
+                        })
+                        let outcome = await StreamingAdapter().consume(streamed.rows, initialColumns: state.model.columns) { model in
+                            state.model = model
+                        }
+                        if Task.isCancelled {
                             state.status = .cancelled
                             let n = state.model.rows.count
                             state.message = n > 0 ? "Cancelled — \(n) row\(n == 1 ? "" : "s")" : "Cancelled"
-                        } else {
-                            state.status = .failed
-                            state.message = annotatedQueryError(error, profileID: profileID)
+                            state.duration = Date().timeIntervalSince(start)
+                            markRemainingCancelled(states, after: index)
+                            return
                         }
-                        state.duration = Date().timeIntervalSince(start)
-                        markRemainingCancelled(states, after: index)
-                        return
+                        switch outcome {
+                        case .success(let finalModel):
+                            state.model = finalModel
+                            state.status = .complete
+                        case .failure(let error):
+                            if SQLStreamability.isCancellation(error) {
+                                state.status = .cancelled
+                                let n = state.model.rows.count
+                                state.message = n > 0 ? "Cancelled — \(n) row\(n == 1 ? "" : "s")" : "Cancelled"
+                            } else {
+                                state.status = .failed
+                                state.message = annotatedQueryError(error, profileID: profileID)
+                            }
+                            state.duration = Date().timeIntervalSince(start)
+                            markRemainingCancelled(states, after: index)
+                            return
+                        }
+                    } else {
+                        state.status = .running
+                        let result = try await connection.execute(guarded.sql)
+                        if Task.isCancelled {
+                            state.status = .cancelled
+                            state.message = "Cancelled"
+                            state.duration = Date().timeIntervalSince(start)
+                            markRemainingCancelled(states, after: index)
+                            return
+                        }
+                        if let columns = result.columns {
+                            state.sqlColumns = columns
+                            state.model = ResultSetModel(
+                                columns: columns.map { GridColumn(ordinal: $0.ordinal, name: $0.name, dataType: $0.dataType) },
+                                rows: result.rows,
+                                isComplete: true
+                            )
+                            state.status = .complete
+                        } else {
+                            state.status = .complete
+                            state.message = result.affectedRowCount.map { "\($0) row(s) affected" } ?? "OK"
+                        }
                     }
-                } else {
-                    state.status = .running
-                    let result = try await connection.execute(guarded.sql)
-                    if Task.isCancelled {
+                    state.duration = Date().timeIntervalSince(start)
+                    recordHistory(statement.text, profileID: profileID)
+                    if Self.statementChangesSchema(statement.text) {
+                        refreshSchema(for: profileID)
+                    }
+                    if state.status == .complete, !state.sqlColumns.isEmpty {
+                        Task { await resolveEditable(for: state, profileID: profileID) }
+                    }
+                    break statementAttempt
+                } catch is CancellationError {
+                    state.status = .cancelled
+                    state.message = "Cancelled"
+                    state.duration = Date().timeIntervalSince(start)
+                    markRemainingCancelled(states, after: index)
+                    return
+                } catch {
+                    if SQLStreamability.isCancellation(error) {
                         state.status = .cancelled
                         state.message = "Cancelled"
                         state.duration = Date().timeIntervalSince(start)
                         markRemainingCancelled(states, after: index)
                         return
                     }
-                    if let columns = result.columns {
-                        state.sqlColumns = columns
-                        state.model = ResultSetModel(
-                            columns: columns.map { GridColumn(ordinal: $0.ordinal, name: $0.name, dataType: $0.dataType) },
-                            rows: result.rows,
-                            isComplete: true
-                        )
-                        state.status = .complete
-                    } else {
-                        state.status = .complete
-                        state.message = result.affectedRowCount.map { "\($0) row(s) affected" } ?? "OK"
+                    if !retriedSend, Self.isRetryableSendFailure(error) {
+                        retriedSend = true
+                        continue
                     }
-                }
-                state.duration = Date().timeIntervalSince(start)
-                recordHistory(statement.text, profileID: profileID)
-                if Self.statementChangesSchema(statement.text) {
-                    refreshSchema(for: profileID)
-                }
-                if state.status == .complete, !state.sqlColumns.isEmpty {
-                    Task { await resolveEditable(for: state, profileID: profileID) }
-                }
-            } catch is CancellationError {
-                state.status = .cancelled
-                state.message = "Cancelled"
-                state.duration = Date().timeIntervalSince(start)
-                markRemainingCancelled(states, after: index)
-                return
-            } catch {
-                if SQLStreamability.isCancellation(error) {
-                    state.status = .cancelled
-                    state.message = "Cancelled"
-                } else {
                     state.status = .failed
                     state.message = annotatedQueryError(error, profileID: profileID)
+                    state.duration = Date().timeIntervalSince(start)
+                    markRemainingCancelled(states, after: index)
+                    return
                 }
-                state.duration = Date().timeIntervalSince(start)
-                markRemainingCancelled(states, after: index)
-                return
             }
         }
     }
@@ -363,21 +373,55 @@ extension WorkspaceModel {
         }
     }
 
+    static func isRetryableSendFailure(_ error: Error) -> Bool {
+        if let pg = error as? PGError {
+            return pg.isRetryableSendFailure
+        }
+        if case .connectionFailed(let message) = error as? SQLDriverError {
+            return message.lowercased().contains("not connected")
+        }
+        return false
+    }
+
     func awaitConnection(_ profileID: UUID) async -> (any DatabaseConnection)? {
-        if let connection = await connectionManager.connection(for: profileID) {
+        if let connection = await liveConnection(profileID) {
             return connection
         }
-        let status = connectionStatuses[profileID]
-        if case .connecting = status {
+        if case .connecting = connectionStatuses[profileID] {
             var waited = 0.0
             while waited < 15 {
                 try? await Task.sleep(for: .milliseconds(50))
-                if let connection = await connectionManager.connection(for: profileID) {
+                if let connection = await liveConnection(profileID) {
                     return connection
                 }
                 waited += 0.05
             }
         }
-        return await connectionManager.connection(for: profileID)
+        return await reconnectIfNeeded(profileID)
+    }
+
+    private func liveConnection(_ profileID: UUID) async -> (any DatabaseConnection)? {
+        guard let connection = await connectionManager.connection(for: profileID),
+              await connection.isConnected() else {
+            return nil
+        }
+        return connection
+    }
+
+    private func reconnectIfNeeded(_ profileID: UUID) async -> (any DatabaseConnection)? {
+        if let connection = await liveConnection(profileID) {
+            return connection
+        }
+        guard let profile = document.connections.first(where: { $0.id == profileID }) else {
+            return nil
+        }
+        do {
+            let connection = try await connectionManager.connect(profile)
+            connectionStatuses[profileID] = .connected
+            lastConnectionErrors[profileID] = nil
+            return connection
+        } catch {
+            return nil
+        }
     }
 }
