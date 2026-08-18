@@ -81,6 +81,8 @@ extension SchemaBrowser {
             return try await postgresIndexes(connection, object: object)
         case .mysql:
             return try await mysqlIndexes(connection, object: object)
+        case .redis:
+            return []
         }
     }
 
@@ -95,6 +97,8 @@ extension SchemaBrowser {
             return try await postgresForeignKeys(connection, object: object)
         case .mysql:
             return try await mysqlForeignKeys(connection, object: object)
+        case .redis:
+            return []
         }
     }
 
