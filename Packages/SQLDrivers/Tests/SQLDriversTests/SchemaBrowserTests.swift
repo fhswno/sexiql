@@ -8,6 +8,8 @@ final class SchemaBrowserTests: XCTestCase {
         XCTAssertEqual(SchemaBrowser.quoteIdentifier("a\"b", kind: .postgres), "\"a\"\"b\"")
         XCTAssertEqual(SchemaBrowser.quoteIdentifier("users", kind: .mysql), "`users`")
         XCTAssertEqual(SchemaBrowser.quoteIdentifier("a`b", kind: .mysql), "`a``b`")
+        XCTAssertEqual(SchemaBrowser.quoteIdentifier("plain", kind: .redis), "plain")
+        XCTAssertEqual(SchemaBrowser.quoteIdentifier("has space", kind: .redis), "\"has space\"")
     }
 
     func testQualify() {
@@ -24,6 +26,8 @@ final class SchemaBrowserTests: XCTestCase {
             SchemaBrowser.selectAllSQL(obj, kind: .postgres, limit: 1000),
             "SELECT * FROM \"public\".\"t\" LIMIT 1000;"
         )
+        let key = SchemaObject(schema: "hash", name: "user:1", kind: .key)
+        XCTAssertEqual(SchemaBrowser.selectAllSQL(key, kind: .redis), "HGETALL user:1")
     }
 
     func testCancelRequestPacket() {
