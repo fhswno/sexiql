@@ -10,6 +10,10 @@ enum ConnectionErrorFormatting {
             ? profile.database
             : "\(profile.host):\(profile.port)"
 
+        if lower.hasPrefix("ssh failed") || lower.hasPrefix("ssh tunnel") {
+            return raw
+        }
+
         if lower.contains("pgerror error") || lower.contains("sqldrivererror error") {
             if let better = (error as? LocalizedError)?.errorDescription, !better.isEmpty {
                 return better
