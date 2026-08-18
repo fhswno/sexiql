@@ -72,6 +72,8 @@ public enum CellInsertSQL: Sendable {
             return "INSERT INTO \(name) DEFAULT VALUES RETURNING *"
         case .mysql:
             return "INSERT INTO \(name) () VALUES ()"
+        case .redis:
+            return ""
         }
     }
 
@@ -79,7 +81,7 @@ public enum CellInsertSQL: Sendable {
         switch kind {
         case .mysql: "SELECT LAST_INSERT_ID()"
         case .sqlite: "SELECT last_insert_rowid()"
-        case .postgres: nil
+        case .postgres, .redis: nil
         }
     }
 
@@ -193,6 +195,8 @@ public struct EditableTableResolver: Sendable {
             let oids = Set(columns.compactMap(\.tableOID))
             guard oids.count == 1, let oid = oids.first, oid != 0 else { return nil }
             return try await resolveTableName(for: connection, oid: oid)
+        case .redis:
+            return nil
         }
     }
 
@@ -257,6 +261,8 @@ public struct EditableTableResolver: Sendable {
             return result.rows.compactMap { row in
                 if case .string(let name) = row.values.first { name } else { nil }
             }
+        case .redis:
+            return []
         }
     }
 
