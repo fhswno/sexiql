@@ -50,6 +50,37 @@ final class CSVCodecTests: XCTestCase {
         let rows = try CSVCodec.parse("a,,c\n,,\n")
         XCTAssertEqual(rows[1], ["", "", ""])
     }
+
+    func testSemicolonDelimiter() throws {
+        let rows = try CSVCodec.parse(
+            "id;name\n1;\"a;b\"\n",
+            dialect: CSVDialect(delimiter: ";", quote: "\"")
+        )
+        XCTAssertEqual(rows, [["id", "name"], ["1", "a;b"]])
+    }
+
+    func testTabDelimiter() throws {
+        let rows = try CSVCodec.parse(
+            "id\tname\n1\tada\n",
+            dialect: .tsv
+        )
+        XCTAssertEqual(rows, [["id", "name"], ["1", "ada"]])
+    }
+
+    func testSniffPrefersSemicolon() {
+        let dialect = CSVCodec.sniff(Data("id;name;city\n1;ada;paris\n".utf8))
+        XCTAssertEqual(dialect.delimiter, ";")
+    }
+
+    func testSniffPrefersTab() {
+        let dialect = CSVCodec.sniff(Data("id\tname\n1\tada\n".utf8))
+        XCTAssertEqual(dialect.delimiter, "\t")
+    }
+
+    func testSniffKeepsComma() {
+        let dialect = CSVCodec.sniff(Data("id,name\n1,ada\n".utf8))
+        XCTAssertEqual(dialect.delimiter, ",")
+    }
 }
 
 final class JSONCodecTests: XCTestCase {
