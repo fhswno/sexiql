@@ -7,7 +7,7 @@ public enum TunnelError: Error, LocalizedError, Sendable, Equatable {
     case invalidConfiguration(String)
     case passwordAuthenticationUnavailable
     case processFailed(String)
-    case timedOut
+    case timedOut(String)
     case notImplemented(feature: String)
     case handshakeFailed
     case portForwardFailed
@@ -18,11 +18,52 @@ public enum TunnelError: Error, LocalizedError, Sendable, Equatable {
         case .passwordAuthenticationUnavailable:
             "Password-based SSH authentication is not supported. Use a key or agent."
         case .processFailed(let message): "SSH failed: \(message)"
-        case .timedOut: "SSH tunnel timed out"
+        case .timedOut(let detail):
+            detail.isEmpty ? "SSH tunnel timed out" : "SSH tunnel timed out\n\(detail)"
         case .notImplemented(let feature): "SSH feature not implemented: \(feature)"
         case .handshakeFailed: "SSH handshake failed"
         case .portForwardFailed: "SSH port forward failed"
         }
+    }
+}
+
+public enum SSHStderr {
+    public static let maxLines = 8
+    public static let maxChars = 800
+
+    public static func sanitize(_ raw: String) -> String {
+        let lines = raw
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        var text = Array(lines.suffix(maxLines)).joined(separator: "\n")
+        if text.count > maxChars {
+            let clipped = String(text.suffix(maxChars))
+            if let newline = clipped.firstIndex(of: "\n") {
+                text = "…" + String(clipped[clipped.index(after: newline)...])
+            } else {
+                text = "…" + clipped
+            }
+        }
+        return text
+    }
+
+    public static func describeFailure(fallback: String, stderr: String) -> String {
+        let cleaned = sanitize(stderr)
+        if cleaned.isEmpty { return fallback }
+        return "\(fallback)\n\(cleaned)"
+    }
+
+    static func read(from pipe: Pipe, processExited: Bool) -> String {
+        let data: Data
+        if processExited {
+            data = pipe.fileHandleForReading.readDataToEndOfFile()
+        } else {
+            data = pipe.fileHandleForReading.availableData
+        }
+        return String(data: data, encoding: .utf8) ?? ""
     }
 }
 
@@ -130,7 +171,8 @@ public struct SSHTunnelManager: Sendable {
         process.arguments = command.arguments
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        let errPipe = Pipe()
+        process.standardError = errPipe
 
         do {
             try process.run()
@@ -140,7 +182,7 @@ public struct SSHTunnelManager: Sendable {
 
         let session = SSHProcessSession(localPort: localPort, process: process)
         do {
-            try await Self.waitForPort(localPort, process: process)
+            try await Self.waitForPort(localPort, process: process, stderr: errPipe)
             return session
         } catch {
             try? await session.stop()
@@ -174,13 +216,22 @@ public struct SSHTunnelManager: Sendable {
         return Int(UInt16(bigEndian: bound.sin_port))
     }
 
-    private static func waitForPort(_ port: Int, process: Process) async throws {
+    private static func waitForPort(_ port: Int, process: Process, stderr: Pipe) async throws {
         for _ in 0..<100 {
-            if !process.isRunning { throw TunnelError.processFailed("ssh exited before the tunnel became ready") }
+            if !process.isRunning {
+                throw TunnelError.processFailed(
+                    SSHStderr.describeFailure(
+                        fallback: "ssh exited before the tunnel became ready",
+                        stderr: SSHStderr.read(from: stderr, processExited: true)
+                    )
+                )
+            }
             if canConnect(to: port) { return }
             try await Task.sleep(for: .milliseconds(50))
         }
-        throw TunnelError.timedOut
+        throw TunnelError.timedOut(
+            SSHStderr.sanitize(SSHStderr.read(from: stderr, processExited: false))
+        )
     }
 
     private static func canConnect(to port: Int) -> Bool {
