@@ -28,6 +28,19 @@ extension WorkspaceModel {
         }
     }
 
+    var inspectorVisible: Bool {
+        get { layout.inspectorVisible }
+        set {
+            var next = layout
+            next.inspectorVisible = newValue
+            layout = next
+        }
+    }
+
+    func toggleInspector() {
+        inspectorVisible.toggle()
+    }
+
     var resultsCollapsed: Bool {
         get { layout.resultsCollapsed }
         set {
