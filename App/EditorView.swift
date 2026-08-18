@@ -17,6 +17,13 @@ struct ResultsPaneView: View {
     @State private var requestedEdit: CellEditTarget?
     @State private var copyFeedback: String?
 
+    private var tabIsReadOnly: Bool {
+        let profileID = model.document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID
+        return profileID.flatMap { id in
+            model.document.connections.first(where: { $0.id == id })?.readOnly
+        } == true
+    }
+
     var body: some View {
         Group {
             if let plan = model.explainPlans[tabID] {
@@ -236,7 +243,7 @@ struct ResultsPaneView: View {
             sortOrdinal: $sortOrdinal,
             sortAscending: $sortAscending,
             selectedIDs: $selectedRowIDs,
-            isEditable: result.editableTable != nil && result.status == .complete,
+            isEditable: result.editableTable != nil && result.status == .complete && !tabIsReadOnly,
             draftRowID: result.draftRowIndex,
             onEditCell: { row, column, value in
                 model.handleCellEdit(
@@ -296,8 +303,8 @@ struct ResultsPaneView: View {
                         Image(systemName: "plus")
                     }
                     .buttonStyle(.borderless)
-                    .disabled(model.isProfileBusy(model.document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID))
-                    .help("Add row")
+                    .disabled(tabIsReadOnly || model.isProfileBusy(model.document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID))
+                    .help(tabIsReadOnly ? "Connection is read-only" : "Add row")
 
                     Button {
                         model.requestDeleteResultRows(
@@ -309,7 +316,7 @@ struct ResultsPaneView: View {
                         Image(systemName: "trash")
                     }
                     .buttonStyle(.borderless)
-                    .disabled(selectedRowIDs.isEmpty || model.isProfileBusy(model.document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID))
+                    .disabled(tabIsReadOnly || selectedRowIDs.isEmpty || model.isProfileBusy(model.document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID))
                     .help(selectedRowIDs.count > 1 ? "Delete \(selectedRowIDs.count) rows" : "Delete row")
 
                     Button {
