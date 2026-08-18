@@ -31,4 +31,21 @@ final class ModelsTests: XCTestCase {
         let connected = await pg.isConnected()
         XCTAssertFalse(connected)
     }
+
+    func testInspectDetectsJSON() {
+        XCTAssertEqual(SQLValueInspect.kind(of: .null), .null)
+        XCTAssertEqual(SQLValueInspect.kind(of: .string("hello")), .string)
+        XCTAssertEqual(SQLValueInspect.kind(of: .string("{\"a\":1}")), .json)
+        XCTAssertNil(SQLValueInspect.prettyJSON("not json"))
+        XCTAssertTrue(SQLValueInspect.prettyJSON("{\"b\":2,\"a\":1}")?.contains("\"a\"") == true)
+    }
+
+    func testInspectHexAndSize() {
+        let data = Data([0x0A, 0xFF])
+        XCTAssertEqual(SQLValueInspect.hexPreview(data), "0a ff")
+        XCTAssertEqual(SQLValueInspect.sizeLabel(.string("ab")), "2 characters")
+        XCTAssertEqual(SQLValueInspect.sizeLabel(.null), "empty")
+        let long = Data(repeating: 1, count: 300)
+        XCTAssertTrue(SQLValueInspect.hexPreview(long).hasSuffix(" …"))
+    }
 }
