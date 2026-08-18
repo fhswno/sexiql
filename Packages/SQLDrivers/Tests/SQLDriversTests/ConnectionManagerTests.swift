@@ -37,6 +37,10 @@ final class MockConnection: DatabaseConnection, @unchecked Sendable {
         state.withLock { $0.connected }
     }
 
+    func markDisconnected() {
+        state.withLock { $0.connected = false }
+    }
+
     func connect(password: String?) async throws {
         try state.withLock { state in
             state.receivedPassword = password
@@ -115,6 +119,31 @@ final class ConnectionManagerTests: XCTestCase {
         try await manager.disconnect(profile.id)
         status = await manager.status(for: profile.id)
         XCTAssertEqual(status, .disconnected)
+        clearFactory()
+    }
+
+    func testConnectRebuildsWhenDisconnected() async throws {
+        let store = MemoryCredentialStore()
+        let manager = ConnectionManager(credentialStore: store)
+        let profile = ConnectionProfile(name: "m", kind: .postgres, host: "h", username: "u")
+
+        let first = MockConnection(profile: profile)
+        stubFactory(first)
+        let original = try await manager.connect(profile)
+        let firstConnected = await first.isConnected()
+        XCTAssertTrue(firstConnected)
+
+        first.markDisconnected()
+        let firstDead = await first.isConnected()
+        XCTAssertFalse(firstDead)
+
+        let replacement = MockConnection(profile: profile)
+        stubFactory(replacement)
+        let second = try await manager.connect(profile)
+        let replacementConnected = await replacement.isConnected()
+        XCTAssertTrue(replacementConnected)
+        XCTAssertTrue(second as AnyObject === replacement as AnyObject)
+        XCTAssertFalse(second as AnyObject === original as AnyObject)
         clearFactory()
     }
 
