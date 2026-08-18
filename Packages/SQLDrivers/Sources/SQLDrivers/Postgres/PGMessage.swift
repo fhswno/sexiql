@@ -117,13 +117,24 @@ public struct PGByteReader: Sendable {
     }
 
     public mutating func readInt16() throws -> Int16 {
-        let bytes = try readBytes(2)
-        return Int16(bigEndian: bytes.withUnsafeBytes { $0.load(as: Int16.self) })
+        Int16(bitPattern: try readUInt16())
     }
 
     public mutating func readInt32() throws -> Int32 {
+        Int32(bitPattern: try readUInt32())
+    }
+
+    public mutating func readUInt16() throws -> UInt16 {
+        let bytes = try readBytes(2)
+        return UInt16(bytes[bytes.startIndex]) << 8 | UInt16(bytes[bytes.startIndex + 1])
+    }
+
+    public mutating func readUInt32() throws -> UInt32 {
         let bytes = try readBytes(4)
-        return Int32(bigEndian: bytes.withUnsafeBytes { $0.load(as: Int32.self) })
+        return UInt32(bytes[bytes.startIndex]) << 24
+            | UInt32(bytes[bytes.startIndex + 1]) << 16
+            | UInt32(bytes[bytes.startIndex + 2]) << 8
+            | UInt32(bytes[bytes.startIndex + 3])
     }
 
     public mutating func readCString() throws -> String {
