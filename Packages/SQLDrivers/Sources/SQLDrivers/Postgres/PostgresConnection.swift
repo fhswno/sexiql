@@ -345,19 +345,37 @@ public actor PostgresConnection: DatabaseConnection {
     }
 
     private func sendRaw(_ data: Data) async throws {
-        try await transport.write(data)
+        do {
+            try await transport.write(data)
+        } catch {
+            await markDisconnected()
+            throw error
+        }
     }
 
     private func readExact(_ count: Int) async throws -> Data {
         while buffer.count < count {
-            let chunk = try await transport.readExact(max(count - buffer.count, 1))
+            let chunk: Data
+            do {
+                chunk = try await transport.readExact(max(count - buffer.count, 1))
+            } catch {
+                await markDisconnected()
+                throw error
+            }
             guard !chunk.isEmpty else {
+                await markDisconnected()
                 throw PGError(code: "08006", message: "Connection closed by server")
             }
             buffer.append(chunk)
         }
         defer { buffer.removeFirst(count) }
         return Data(buffer.prefix(count))
+    }
+
+    private func markDisconnected() async {
+        connected = false
+        buffer.removeAll()
+        await transport.close()
     }
 
     private func readMessage() async throws -> (PGMessageType, Data) {
