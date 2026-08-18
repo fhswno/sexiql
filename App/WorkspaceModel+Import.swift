@@ -63,6 +63,9 @@ extension WorkspaceModel {
                 session.tableColumns = result.rows.compactMap { row in
                     if case .string(let name) = row.values.first { name } else { nil }
                 }
+            case .redis:
+                session.errorMessage = "CSV import is not available for Redis."
+                return
             }
             session.autoMap()
         } catch {
