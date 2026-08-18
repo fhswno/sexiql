@@ -369,7 +369,7 @@ extension WorkspaceModel {
             document.connections.first(where: { $0.id == id })
         }) else { return }
         let object = SchemaObject(schema: nil, name: name, kind: .table)
-        let sql = SchemaBrowser.selectAllSQL(object, kind: profile.kind)
+        let sql = SchemaBrowser.selectAllSQL(object, kind: profile.kind, limit: document.settings.resultRowLimit)
         let tab = newTab(title: name, sql: sql, titleIsCustom: true)
         run(tab.id)
     }
@@ -389,7 +389,7 @@ extension WorkspaceModel {
             Task { await openRedisKey(object, profile: profile) }
             return
         }
-        let sql = SchemaBrowser.selectAllSQL(object, kind: profile.kind)
+        let sql = SchemaBrowser.selectAllSQL(object, kind: profile.kind, limit: document.settings.resultRowLimit)
         let tab = newTab(title: object.name, sql: sql, titleIsCustom: true)
         run(tab.id)
     }
