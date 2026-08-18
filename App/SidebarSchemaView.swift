@@ -57,6 +57,14 @@ struct SidebarSchemaView: View {
                             .padding(.bottom, SexiQLSpace.sm)
                     }
 
+                    if let notice = model.schemaNotice, !notice.isEmpty {
+                        Text(notice)
+                            .font(SexiQLType.meta)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, SexiQLSpace.lg)
+                            .padding(.bottom, SexiQLSpace.sm)
+                    }
+
                     if model.isSchemaLoading && model.schemaObjects.isEmpty {
                         ProgressView()
                             .controlSize(.small)
