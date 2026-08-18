@@ -10,12 +10,19 @@ enum SQLStreamability {
         return false
     }
 
-    static func isCancellation(_ error: Error) -> Bool {
+    static func isCancellation(_ error: Error, userCancelled: Bool = false) -> Bool {
         if error is CancellationError { return true }
         if let driver = error as? SQLDriverError, driver == .cancelled { return true }
         if let pg = error as? PGError, pg.code == "57014" { return true }
         if let mysql = error as? MySQLWireError, mysql.isQueryInterrupted { return true }
         if let redis = error as? RedisError, redis == .cancelled { return true }
+        if userCancelled {
+            if let pg = error as? PGError, pg.isConnectionDrop { return true }
+            let drop = error.localizedDescription.lowercased()
+            if drop.contains("stream is closed") || drop.contains("connection closed") {
+                return true
+            }
+        }
         let text = error.localizedDescription.lowercased()
         return text.contains("cancel") || text.contains("interrupt")
     }
