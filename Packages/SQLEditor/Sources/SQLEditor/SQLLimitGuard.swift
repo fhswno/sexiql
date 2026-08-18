@@ -15,7 +15,10 @@ public struct SQLLimitGuard: Sendable {
 
     public init() {}
 
-    public func apply(_ sql: String, limit: Int = Self.defaultLimit) -> Outcome {
+    public func apply(_ sql: String, limit: Int? = Self.defaultLimit) -> Outcome {
+        guard let limit, limit > 0 else {
+            return Outcome(sql: sql, didLimit: false)
+        }
         let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return Outcome(sql: sql, didLimit: false)
