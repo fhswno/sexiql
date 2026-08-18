@@ -106,6 +106,15 @@ final class PGWireTests: XCTestCase {
         XCTAssertFalse(PGError(code: "08006", message: "Timed out waiting for Postgres server response after 30s").isRetryableSendFailure)
         XCTAssertFalse(PGError(code: "42P01", message: "relation \"t\" does not exist").isRetryableSendFailure)
     }
+
+    func testConnectionDropClassification() {
+        XCTAssertTrue(PGError(code: "08006", message: "Postgres input stream is closed").isConnectionDrop)
+        XCTAssertTrue(PGError(code: "08006", message: "Postgres output stream is closed").isConnectionDrop)
+        XCTAssertTrue(PGError(code: "08006", message: "Connection closed by server").isConnectionDrop)
+        XCTAssertFalse(PGError(code: "08006", message: "Postgres input stream is closed").isRetryableSendFailure)
+        XCTAssertFalse(PGError(code: "42P01", message: "relation \"t\" does not exist").isConnectionDrop)
+        XCTAssertFalse(PGError(code: "57014", message: "canceling statement due to user request").isConnectionDrop)
+    }
 }
 
 final class PGTypeTests: XCTestCase {
