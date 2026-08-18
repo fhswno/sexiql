@@ -56,6 +56,23 @@ final class ConnectionURLParserTests: XCTestCase {
         XCTAssertEqual(c?.database, "db")
     }
 
+    func testRedisURL() {
+        let c = ConnectionURLParser.parse("redis://:s3cret@127.0.0.1:6380/2")
+        XCTAssertEqual(c?.kind, .redis)
+        XCTAssertEqual(c?.host, "127.0.0.1")
+        XCTAssertEqual(c?.port, 6380)
+        XCTAssertEqual(c?.database, "2")
+        XCTAssertEqual(c?.password, "s3cret")
+        XCTAssertEqual(c?.tlsMode, .off)
+    }
+
+    func testRedissURLEnablesTLS() {
+        let c = ConnectionURLParser.parse("rediss://cache.internal/0")
+        XCTAssertEqual(c?.kind, .redis)
+        XCTAssertEqual(c?.host, "cache.internal")
+        XCTAssertEqual(c?.tlsMode, .required)
+    }
+
     func testJdbcPrefix() {
         let c = ConnectionURLParser.parse("jdbc:postgresql://h:5432/d")
         XCTAssertEqual(c?.kind, .postgres)
