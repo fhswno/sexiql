@@ -79,6 +79,13 @@ final class RedisTests: XCTestCase {
         )
     }
 
+    func testScanStopHelper() {
+        XCTAssertTrue(RedisConnection.scanShouldStop(keyCount: 10, cap: 2000, cursor: "0"))
+        XCTAssertTrue(RedisConnection.scanShouldStop(keyCount: 2000, cap: 2000, cursor: "5"))
+        XCTAssertFalse(RedisConnection.scanShouldStop(keyCount: 10, cap: 2000, cursor: "5"))
+        XCTAssertEqual(RedisConnection.defaultScanCap, 2000)
+    }
+
     func testKeyLoadCommands() {
         XCTAssertEqual(RedisResultGrid.keyLoadCommand(type: "hash", key: "user:1"), "HGETALL user:1")
         XCTAssertEqual(RedisResultGrid.keyLoadCommand(type: "list", key: "q"), "LRANGE q 0 -1")
