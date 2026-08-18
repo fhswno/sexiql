@@ -38,4 +38,12 @@ public struct PGError: Error, LocalizedError, Sendable, Equatable {
             || text.contains("output stream")
             || text.contains("not connected")
     }
+
+    public var isConnectionDrop: Bool {
+        if code == "08006" { return true }
+        let text = message.lowercased()
+        return text.contains("stream is closed")
+            || text.contains("connection closed")
+            || text.contains("server closed")
+    }
 }
