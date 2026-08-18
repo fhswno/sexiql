@@ -61,40 +61,45 @@ public actor PostgresConnection: DatabaseConnection {
     }
 
     public func cancelInFlight() async {
-        if let pid = backendProcessID, let key = backendSecretKey, connected {
-            let host = profile.host
-            let port = profile.port
-            let tlsMode = profile.tlsMode
-            let tlsServerName = profile.tlsServerName ?? profile.host
-            let packet = PGWire.cancelRequest(processID: pid, secretKey: key)
-            Task.detached {
-                let side = PostgresTransport()
-                do {
-                    try await side.connect(host: host, port: port)
-                    if tlsMode != .off {
-                        var sslRequest = PGWire.int32(8)
-                        sslRequest.append(PGWire.int32(80877103))
-                        try await side.write(sslRequest)
-                        let flag = try await side.readExact(1)
-                        if flag.first == UInt8(ascii: "S") {
-                            try await side.startTLS(
-                                serverName: tlsServerName,
-                                verifyCertificate: tlsMode.verifiesCertificate
-                            )
-                        }
-                    }
-                    try await side.write(packet)
-                } catch {
-                    // Fall through — hard close below.
-                }
-                await side.close()
-            }
-            try? await Task.sleep(for: .milliseconds(200))
+        guard connected, let pid = backendProcessID, let key = backendSecretKey else {
+            await markDisconnected()
+            return
         }
-        await transport.close()
-        connected = false
-        buffer.removeAll()
-        resetQueryOperationGate()
+        let sent = await sendCancelRequest(processID: pid, secretKey: key)
+        if !sent {
+            await markDisconnected()
+        }
+    }
+
+    private func sendCancelRequest(processID: Int32, secretKey: Int32) async -> Bool {
+        let host = profile.host
+        let port = profile.port
+        let tlsMode = profile.tlsMode
+        let tlsServerName = profile.tlsServerName ?? profile.host
+        let packet = PGWire.cancelRequest(processID: processID, secretKey: secretKey)
+        let side = PostgresTransport()
+        var sent = false
+        do {
+            try await side.connect(host: host, port: port)
+            if tlsMode != .off {
+                var sslRequest = PGWire.int32(8)
+                sslRequest.append(PGWire.int32(80877103))
+                try await side.write(sslRequest)
+                let flag = try await side.readExact(1)
+                if flag.first == UInt8(ascii: "S") {
+                    try await side.startTLS(
+                        serverName: tlsServerName,
+                        verifyCertificate: tlsMode.verifiesCertificate
+                    )
+                }
+            }
+            try await side.write(packet)
+            sent = true
+        } catch {
+            sent = false
+        }
+        await side.close()
+        return sent
     }
 
     // MARK: - Query
