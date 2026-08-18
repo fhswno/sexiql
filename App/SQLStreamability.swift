@@ -14,6 +14,8 @@ enum SQLStreamability {
         if error is CancellationError { return true }
         if let driver = error as? SQLDriverError, driver == .cancelled { return true }
         if let pg = error as? PGError, pg.code == "57014" { return true }
+        if let mysql = error as? MySQLWireError, mysql.isQueryInterrupted { return true }
+        if let redis = error as? RedisError, redis == .cancelled { return true }
         let text = error.localizedDescription.lowercased()
         return text.contains("cancel") || text.contains("interrupt")
     }
