@@ -140,11 +140,15 @@ public enum SchemaBrowser: Sendable {
         return "\(quoteIdentifier(schema, kind: kind)).\(table)"
     }
 
-    public static func selectAllSQL(_ object: SchemaObject, kind: DatabaseKind, limit: Int = 1000) -> String {
+    public static func selectAllSQL(_ object: SchemaObject, kind: DatabaseKind, limit: Int? = 1000) -> String {
         if kind == .redis {
             return RedisResultGrid.keyLoadCommand(type: object.schema ?? "string", key: object.name)
         }
-        return "SELECT * FROM \(qualify(object, kind: kind)) LIMIT \(limit);"
+        let from = qualify(object, kind: kind)
+        if let limit, limit > 0 {
+            return "SELECT * FROM \(from) LIMIT \(limit);"
+        }
+        return "SELECT * FROM \(from);"
     }
 
     // MARK: - Private
