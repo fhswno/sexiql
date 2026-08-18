@@ -253,10 +253,10 @@ extension WorkspaceModel {
                     if kind == .redis {
                         guarded = SQLLimitGuard.Outcome(sql: statement.text, didLimit: false)
                     } else {
-                        guarded = SQLLimitGuard().apply(statement.text)
+                        guarded = SQLLimitGuard().apply(statement.text, limit: document.settings.resultRowLimit)
                     }
                     if guarded.didLimit {
-                        state.appliedLimit = SQLLimitGuard.defaultLimit
+                        state.appliedLimit = document.settings.resultRowLimit
                     }
                     if kind != .redis, SQLStreamability.isStreamable(statement.text) {
                         state.status = .streaming
