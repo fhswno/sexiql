@@ -11,6 +11,10 @@ extension WorkspaceModel {
     // MARK: - Import
 
     func prepareImport(from url: URL, profileID: UUID) {
+        if document.connections.first(where: { $0.id == profileID })?.readOnly == true {
+            activeError = "Connection is read-only."
+            return
+        }
         do {
             let data = try Data(contentsOf: url)
             let dialect = CSVCodec.sniff(data)
@@ -75,6 +79,10 @@ extension WorkspaceModel {
 
     func runImport() async {
         guard let session = importSession, let profileID = session.profileID else { return }
+        if document.connections.first(where: { $0.id == profileID })?.readOnly == true {
+            session.errorMessage = "Connection is read-only."
+            return
+        }
         guard let connection = await connectionManager.connection(for: profileID) else {
             session.errorMessage = "Not connected"
             return
