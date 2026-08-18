@@ -1,4 +1,5 @@
 import SwiftUI
+import SQLImportExport
 
 struct ImportSheet: View {
     @Environment(WorkspaceModel.self) private var model
@@ -11,7 +12,7 @@ struct ImportSheet: View {
             Divider()
             footer
         }
-        .frame(width: 560, height: 460)
+        .frame(width: 620, height: 520)
     }
 
     private var header: some View {
@@ -48,6 +49,24 @@ struct ImportSheet: View {
                 Toggle("First row is header", isOn: headerBinding)
                     .toggleStyle(.checkbox)
                     .font(.caption)
+            }
+
+            HStack(spacing: 12) {
+                dialectPicker("Delimiter", selection: delimiterBinding) {
+                    ForEach(CSVDelimiterKind.allCases) { kind in
+                        Text(kind.displayName).tag(kind)
+                    }
+                }
+                dialectPicker("Quote", selection: quoteBinding) {
+                    Text("\"").tag(false)
+                    Text("'").tag(true)
+                }
+                dialectPicker("Encoding", selection: encodingBinding) {
+                    ForEach(CSVTextEncoding.allCases) { encoding in
+                        Text(encoding.displayName).tag(encoding)
+                    }
+                }
+                Spacer(minLength: 0)
             }
 
             Text("Column mapping")
@@ -164,8 +183,56 @@ struct ImportSheet: View {
     private var headerBinding: Binding<Bool> {
         Binding(
             get: { session.hasHeader },
-            set: { model.importSession?.hasHeader = $0 }
+            set: { newValue in
+                model.importSession?.hasHeader = newValue
+                model.reloadImportSession()
+            }
         )
+    }
+
+    private var delimiterBinding: Binding<CSVDelimiterKind> {
+        Binding(
+            get: { session.delimiterKind },
+            set: { newValue in
+                model.importSession?.dialect.delimiter = newValue.character
+                model.reloadImportSession()
+            }
+        )
+    }
+
+    private var quoteBinding: Binding<Bool> {
+        Binding(
+            get: { session.quoteIsApostrophe },
+            set: { newValue in
+                model.importSession?.dialect.quote = newValue ? "'" : "\""
+                model.reloadImportSession()
+            }
+        )
+    }
+
+    private var encodingBinding: Binding<CSVTextEncoding> {
+        Binding(
+            get: { session.textEncoding },
+            set: { newValue in
+                model.importSession?.dialect.encoding = newValue.encoding
+                model.reloadImportSession()
+            }
+        )
+    }
+
+    private func dialectPicker<Value: Hashable, Content: View>(
+        _ title: String,
+        selection: Binding<Value>,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker("", selection: selection, content: content)
+                .labelsHidden()
+                .frame(minWidth: 90)
+        }
     }
 
     private func mappingBinding(for tableColumn: String) -> Binding<String> {
