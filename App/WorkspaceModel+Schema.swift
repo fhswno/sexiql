@@ -47,7 +47,9 @@ extension WorkspaceModel {
                     _ = try? await connection.execute(sql)
                 }
             }
-            startColumnPrefetch(prioritize: prioritizedTableNames(), profileID: profile.id)
+            if profile.kind != .redis {
+                startColumnPrefetch(prioritize: prioritizedTableNames(), profileID: profile.id)
+            }
         } catch {
             if selectedConnectionID == profile.id {
                 schemaObjects = []
