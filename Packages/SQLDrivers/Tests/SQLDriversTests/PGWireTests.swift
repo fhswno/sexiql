@@ -35,6 +35,22 @@ final class PGWireTests: XCTestCase {
         XCTAssertTrue(reader.isAtEnd)
     }
 
+    func testByteReaderUnalignedSlice() throws {
+        var padded = Data([0xFF])
+        padded.append(PGWire.int16(5))
+        padded.append(PGWire.int32(0x01020304))
+        var reader = PGByteReader(data: Data(padded.dropFirst()), offset: 0)
+        XCTAssertEqual(try reader.readInt16(), 5)
+        XCTAssertEqual(try reader.readInt32(), 0x01020304)
+
+        var signed = Data([0xAA])
+        signed.append(PGWire.int16(-1))
+        signed.append(PGWire.int32(-2))
+        var signedReader = PGByteReader(data: Data(signed.dropFirst()))
+        XCTAssertEqual(try signedReader.readInt16(), -1)
+        XCTAssertEqual(try signedReader.readInt32(), -2)
+    }
+
     func testByteReaderTruncation() {
         var reader = PGByteReader(data: Data([0x00, 0x01]))
         XCTAssertThrowsError(try reader.readInt32())
@@ -105,6 +121,51 @@ final class PGWireTests: XCTestCase {
         XCTAssertFalse(PGError(code: "08006", message: "Connection closed by server").isRetryableSendFailure)
         XCTAssertFalse(PGError(code: "08006", message: "Timed out waiting for Postgres server response after 30s").isRetryableSendFailure)
         XCTAssertFalse(PGError(code: "42P01", message: "relation \"t\" does not exist").isRetryableSendFailure)
+    }
+
+    func testParseRowDescriptionWithTypmodMinusOne() throws {
+        var payload = Data()
+        payload.append(PGWire.int16(2))
+        payload.append(PGWire.cstring("id"))
+        payload.append(PGWire.int32(16405))
+        payload.append(PGWire.int16(1))
+        payload.append(PGWire.int32(23))
+        payload.append(PGWire.int16(4))
+        payload.append(PGWire.int32(-1))
+        payload.append(PGWire.int16(0))
+        payload.append(PGWire.cstring("default_pull_id"))
+        payload.append(PGWire.int32(0))
+        payload.append(PGWire.int16(0))
+        payload.append(PGWire.int32(25))
+        payload.append(PGWire.int16(-1))
+        payload.append(PGWire.int32(-1))
+        payload.append(PGWire.int16(0))
+
+        var padded = Data([0xEE])
+        padded.append(payload)
+        let sliced = Data(padded.dropFirst())
+        let columns = try PGRowCodec.parseRowDescription(sliced)
+        XCTAssertEqual(columns.count, 2)
+        XCTAssertEqual(columns[0].name, "id")
+        XCTAssertEqual(columns[0].dataType, "int4")
+        XCTAssertEqual(columns[0].tableOID, 16405)
+        XCTAssertEqual(columns[1].name, "default_pull_id")
+        XCTAssertEqual(columns[1].dataType, "text")
+    }
+
+    func testParseRowDescriptionHighBitOID() throws {
+        var payload = Data()
+        payload.append(PGWire.int16(1))
+        payload.append(PGWire.cstring("x"))
+        payload.append(contentsOf: [0x80, 0x00, 0x00, 0x01])
+        payload.append(PGWire.int16(1))
+        payload.append(contentsOf: [0xFF, 0xFF, 0xFF, 0xFE])
+        payload.append(PGWire.int16(-1))
+        payload.append(PGWire.int32(-1))
+        payload.append(PGWire.int16(0))
+        let columns = try PGRowCodec.parseRowDescription(payload)
+        XCTAssertEqual(columns[0].tableOID, 0x8000_0001)
+        XCTAssertEqual(columns[0].dataType, "oid:4294967294")
     }
 
     func testConnectionDropClassification() {
