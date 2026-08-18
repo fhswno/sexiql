@@ -25,16 +25,18 @@ struct SidebarSchemaView: View {
                         .help("Refresh schema")
                         .disabled(model.isSchemaLoading || model.isQueryRunning(on: model.selectedTabID))
 
-                        Button {
-                            showingFileImporter = true
-                        } label: {
-                            Image(systemName: "square.and.arrow.down")
-                                .font(.caption.weight(.semibold))
-                                .frame(width: 22, height: 22)
-                                .contentShape(Rectangle())
+                        if model.document.connections.first(where: { $0.id == selectedID })?.kind != .redis {
+                            Button {
+                                showingFileImporter = true
+                            } label: {
+                                Image(systemName: "square.and.arrow.down")
+                                    .font(.caption.weight(.semibold))
+                                    .frame(width: 22, height: 22)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Import CSV…")
                         }
-                        .buttonStyle(.borderless)
-                        .help("Import CSV…")
                     }
                 }
             }
@@ -42,7 +44,7 @@ struct SidebarSchemaView: View {
             if let selectedID = model.selectedConnectionID,
                let connection = model.document.connections.first(where: { $0.id == selectedID }) {
                 if model.status(for: connection.id) == .connected {
-                    TextField("Filter tables…", text: Bindable(model).schemaFilter)
+                    TextField(connection.kind == .redis ? "Filter keys…" : "Filter tables…", text: Bindable(model).schemaFilter)
                         .textFieldStyle(.roundedBorder)
                         .padding(.horizontal, SexiQLSpace.lg)
                         .padding(.bottom, SexiQLSpace.sm)
@@ -62,10 +64,14 @@ struct SidebarSchemaView: View {
                             .padding(.vertical, SexiQLSpace.xl)
                     } else if model.filteredSchemaObjects.isEmpty {
                         EmptyStateView(
-                            title: model.schemaFilter.isEmpty ? "No tables" : "No matches",
+                            title: model.schemaFilter.isEmpty
+                                ? (connection.kind == .redis ? "No keys" : "No tables")
+                                : "No matches",
                             subtitle: model.schemaFilter.isEmpty
                                 ? emptySchemaSubtitle(for: connection)
-                                : "No tables match “\(model.schemaFilter)”.",
+                                : (connection.kind == .redis
+                                   ? "No keys match “\(model.schemaFilter)”."
+                                   : "No tables match “\(model.schemaFilter)”."),
                             systemImage: "tablecells.badge.ellipsis"
                         )
                     } else {
@@ -114,10 +120,21 @@ struct SidebarSchemaView: View {
     }
 
     private func emptySchemaSubtitle(for connection: ConnectionProfile) -> String {
+        if connection.kind == .redis {
+            return "No keys in this Redis database."
+        }
         if connection.database.isEmpty {
             return "No tables visible. Set a database name on this connection if you expected some."
         }
         return "No tables or views visible in “\(connection.database)”."
+    }
+
+    private func schemaObjectIcon(_ kind: SchemaObjectKind) -> String {
+        switch kind {
+        case .view: "eye"
+        case .key: "key"
+        case .table: "tablecells"
+        }
     }
 
     @ViewBuilder
@@ -264,7 +281,7 @@ struct SidebarSchemaView: View {
                     model.openSchemaObject(object)
                 } label: {
                     HStack(spacing: SexiQLSpace.sm) {
-                        Image(systemName: object.kind == .view ? "eye" : "tablecells")
+                        Image(systemName: schemaObjectIcon(object.kind))
                             .foregroundStyle(.secondary)
                         Text(showSchema ? object.displayName : object.name)
                             .font(SexiQLType.rowTitle)
@@ -274,7 +291,7 @@ struct SidebarSchemaView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Open SELECT * LIMIT 1000")
+                .help(object.kind == .key ? "Open key" : "Open SELECT * LIMIT 1000")
             }
             .padding(.vertical, 2)
             .contextMenu {
