@@ -40,6 +40,21 @@ final class StatementSplitterTests: XCTestCase {
     func testSingleStatementWithoutSemicolon() {
         XCTAssertEqual(splitter.split("SELECT 1").map(\.text), ["SELECT 1"])
     }
+
+    func testJSONOperatorAndComparisonStayOneStatement() {
+        let sql = """
+        SELECT id, state, created_at, started_at, completed_at, tracking_id
+        FROM q_events
+        WHERE event = 'Nightly Sync > Client'
+          AND input->>'client' = 'ironclad'
+        ORDER BY created_at DESC
+        LIMIT 10
+        """
+        let statements = splitter.split(sql)
+        XCTAssertEqual(statements.count, 1)
+        XCTAssertTrue(statements[0].text.contains("->>'client'"))
+        XCTAssertTrue(statements[0].text.contains("Nightly Sync > Client"))
+    }
 }
 
 final class SyntaxRoleTests: XCTestCase {
