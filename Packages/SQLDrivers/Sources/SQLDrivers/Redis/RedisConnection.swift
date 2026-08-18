@@ -101,10 +101,22 @@ public actor RedisConnection: DatabaseConnection {
         return text
     }
 
-    public func scanKeys(count: Int = 200) async throws -> [(key: String, type: String)] {
+    public static let defaultScanCap = 2000
+
+    public struct ScanResult: Sendable {
+        public var keys: [String]
+        public var truncated: Bool
+    }
+
+    public static func scanShouldStop(keyCount: Int, cap: Int, cursor: String) -> Bool {
+        cursor == "0" || keyCount >= cap
+    }
+
+    public func scanKeys(count: Int = 200, cap: Int = defaultScanCap) async throws -> ScanResult {
         try requireConnected()
         var cursor = "0"
         var keys: [String] = []
+        var truncated = false
         repeat {
             let reply = try await send(["SCAN", cursor, "COUNT", String(count)])
             guard case .array(let items) = reply, let items, items.count >= 2 else {
@@ -115,18 +127,19 @@ public actor RedisConnection: DatabaseConnection {
                 for item in batch {
                     if let key = item.string, !key.isEmpty {
                         keys.append(key)
+                        if keys.count >= cap {
+                            truncated = cursor != "0"
+                            cursor = "0"
+                            break
+                        }
                     }
                 }
             }
-        } while cursor != "0"
-
-        var typed: [(String, String)] = []
-        typed.reserveCapacity(keys.count)
-        for key in keys {
-            let typeReply = try await send(["TYPE", key])
-            typed.append((key, typeReply.string ?? "none"))
+        } while !Self.scanShouldStop(keyCount: keys.count, cap: cap, cursor: cursor)
+        if keys.count >= cap, cursor != "0" {
+            truncated = true
         }
-        return typed
+        return ScanResult(keys: keys, truncated: truncated)
     }
 
     public func keyTypeAndTTL(_ key: String) async throws -> (type: String, ttl: Int64) {
