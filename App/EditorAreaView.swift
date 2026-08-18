@@ -1,5 +1,6 @@
 import SwiftUI
 import SQLCore
+import SQLEditor
 import SQLUI
 
 struct EditorAreaView: View {
@@ -65,6 +66,13 @@ struct EditorAreaView: View {
                     },
                     onNeedColumns: { name in
                         model.ensureCompletionColumns(named: name)
+                    },
+                    dialectForTab: { id in
+                        let profileID = model.document.openTabs.first(where: { $0.id == id })?.connectionProfileID
+                        let kind = profileID.flatMap { pid in
+                            model.document.connections.first(where: { $0.id == pid })?.kind
+                        }
+                        return kind == .redis ? .redis : .sql
                     },
                     onRegisterSQLProvider: { host in
                         model.activeSQLProvider = { [weak host] in
