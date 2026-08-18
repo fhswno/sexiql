@@ -212,6 +212,40 @@ extension WorkspaceModel {
         }
     }
 
+    func hasSavedPassword(for profileID: UUID) -> Bool {
+        (try? credentialStore.password(for: profileID))?.isEmpty == false
+    }
+
+    func testConnection(_ profile: ConnectionProfile, password: String?) async -> Result<String, Error> {
+        var probe = profile
+        probe.id = UUID()
+        if let password, !password.isEmpty {
+            try? credentialStore.setPassword(password, for: probe.id)
+        } else if let existing = try? credentialStore.password(for: profile.id), !existing.isEmpty {
+            try? credentialStore.setPassword(existing, for: probe.id)
+        }
+        defer {
+            try? credentialStore.deletePassword(for: probe.id)
+        }
+        do {
+            let connection = try await connectionManager.connect(probe)
+            let detail: String
+            switch profile.kind {
+            case .redis:
+                _ = try await connection.execute("PING")
+                detail = (try? await connection.serverVersion()) ?? "PONG"
+            case .sqlite, .postgres, .mysql:
+                _ = try await connection.execute("SELECT 1")
+                detail = (try? await connection.serverVersion()) ?? "OK"
+            }
+            try? await connectionManager.disconnect(probe.id)
+            return .success(detail)
+        } catch {
+            try? await connectionManager.disconnect(probe.id)
+            return .failure(error)
+        }
+    }
+
     func saveProfile(_ profile: ConnectionProfile, password: String?) {
         if let index = document.connections.firstIndex(where: { $0.id == profile.id }) {
             document.connections[index] = profile
