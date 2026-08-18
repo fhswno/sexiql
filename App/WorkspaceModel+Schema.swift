@@ -283,6 +283,18 @@ extension WorkspaceModel {
             document.connections.first(where: { $0.id == id })?.kind
         } ?? .postgres
         let snap = profileID.flatMap { schemaByProfile[$0] }
+        if kind == .redis {
+            let keys = (snap?.objects ?? schemaObjects).filter { $0.kind == .key }
+            let objects = keys.map { key in
+                SQLCompletionObject(
+                    name: key.name,
+                    insertText: RedisCommand.quote(key.name),
+                    kind: .table,
+                    columns: []
+                )
+            }
+            return SQLCompletionCatalog(keywords: Array(SQLLexer.redisKeywords).sorted(), objects: objects)
+        }
         let liveObjects = snap?.objects ?? schemaObjects
         let liveColumns = snap?.columns ?? schemaColumnsByID
         var objects = liveObjects.map { object in
