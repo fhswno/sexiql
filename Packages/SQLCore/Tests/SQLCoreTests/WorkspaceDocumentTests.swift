@@ -91,6 +91,7 @@ final class WorkspaceDocumentTests: XCTestCase {
         XCTAssertEqual(profile.port, 5432)
         XCTAssertEqual(ConnectionProfile(name: "Local", kind: .mysql).port, 3306)
         XCTAssertEqual(ConnectionProfile(name: "Local", kind: .sqlite).port, 0)
+        XCTAssertEqual(ConnectionProfile(name: "Local", kind: .redis).port, 6379)
     }
 
     func testWorkspaceStoreRoundTrip() throws {
