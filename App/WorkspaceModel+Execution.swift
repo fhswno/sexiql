@@ -82,13 +82,12 @@ extension WorkspaceModel {
             activeError = "Select a connection in the sidebar before running."
             return
         }
-        if let busy = busyProfileID, busy != profileID {
-            activeError = "Another query is running on a different connection. Stop it first."
-            return
-        }
-        if busyProfileID == profileID, runTasks[tabID] == nil {
-            activeError = "A query is already running on this connection. Stop it first."
-            return
+        if isProfileBusy(profileID), runTasks[tabID] == nil {
+            if hasLiveRun(on: profileID) {
+                activeError = "A query is already running on this connection. Stop it first."
+                return
+            }
+            busyProfileIDs.remove(profileID)
         }
 
         let text = resolveSQLToRun(tabID: tabID, override: overrideSQL)
@@ -108,6 +107,7 @@ extension WorkspaceModel {
         if hadInFlight {
             runTasks[tabID]?.cancel()
             runTasks[tabID] = nil
+            runTokens[tabID] = nil
             runningTabs.remove(tabID)
             finalizeCancelledResults(tabID)
         }
@@ -120,14 +120,17 @@ extension WorkspaceModel {
         activeError = nil
         maybeAutoTitleTab(tabID, fromSQL: tabTexts[tabID] ?? text)
         runningTabs.insert(tabID)
-        busyProfileID = profileID
+        markProfileBusy(profileID)
+        let runToken = UUID()
+        runTokens[tabID] = runToken
         runTasks[tabID] = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
-                self.runTasks[tabID] = nil
-                self.runningTabs.remove(tabID)
-                if self.busyProfileID == profileID {
-                    self.busyProfileID = nil
+                if self.runTokens[tabID] == runToken {
+                    self.runTasks[tabID] = nil
+                    self.runTokens[tabID] = nil
+                    self.runningTabs.remove(tabID)
+                    self.unmarkProfileBusy(profileID)
                 }
             }
             if hadInFlight {
@@ -149,26 +152,19 @@ extension WorkspaceModel {
             ?? selectedConnectionID
         runTasks[tabID]?.cancel()
         runTasks[tabID] = nil
+        runTokens[tabID] = nil
         runningTabs.remove(tabID)
+        if let profileID {
+            unmarkProfileBusy(profileID)
+        }
         if hadTask {
             finalizeCancelledResults(tabID)
         }
-        guard hadTask else {
-            if busyProfileID != nil, runTasks.isEmpty {
-                busyProfileID = nil
-            }
-            return
-        }
+        guard hadTask else { return }
         if invokeDriverCancel, let profileID {
             Task { @MainActor [weak self] in
-                guard let self else { return }
-                await self.cancelInFlightAndReconnectIfNeeded(profileID)
-                if self.busyProfileID == profileID {
-                    self.busyProfileID = nil
-                }
+                await self?.cancelInFlightAndReconnectIfNeeded(profileID)
             }
-        } else if busyProfileID != nil, runTasks.isEmpty {
-            busyProfileID = nil
         }
     }
 
@@ -266,11 +262,8 @@ extension WorkspaceModel {
                         let outcome = await StreamingAdapter().consume(streamed.rows, initialColumns: state.model.columns) { model in
                             state.model = model
                         }
-                        if Task.isCancelled {
-                            state.status = .cancelled
-                            let n = state.model.rows.count
-                            state.message = n > 0 ? "Cancelled — \(n) row\(n == 1 ? "" : "s")" : "Cancelled"
-                            state.duration = Date().timeIntervalSince(start)
+                        if Task.isCancelled || state.status == .cancelled {
+                            keepCancelled(state, rows: state.model.rows.count, start: start)
                             markRemainingCancelled(states, after: index)
                             return
                         }
@@ -279,15 +272,14 @@ extension WorkspaceModel {
                             state.model = finalModel
                             state.status = .complete
                         case .failure(let error):
-                            if SQLStreamability.isCancellation(error) {
-                                state.status = .cancelled
-                                let n = state.model.rows.count
-                                state.message = n > 0 ? "Cancelled — \(n) row\(n == 1 ? "" : "s")" : "Cancelled"
+                            let stopped = Task.isCancelled || state.status == .cancelled
+                            if stopped || SQLStreamability.isCancellation(error, userCancelled: stopped) {
+                                keepCancelled(state, rows: state.model.rows.count, start: start)
                             } else {
                                 state.status = .failed
                                 state.message = annotatedQueryError(error, profileID: profileID)
+                                state.duration = Date().timeIntervalSince(start)
                             }
-                            state.duration = Date().timeIntervalSince(start)
                             markRemainingCancelled(states, after: index)
                             return
                         }
@@ -323,21 +315,18 @@ extension WorkspaceModel {
                         Task { await resolveEditable(for: state, profileID: profileID) }
                     }
                     break statementAttempt
-                } catch is CancellationError {
-                    state.status = .cancelled
-                    state.message = "Cancelled"
-                    state.duration = Date().timeIntervalSince(start)
+                    } catch is CancellationError {
+                    keepCancelled(state, start: start)
                     markRemainingCancelled(states, after: index)
                     return
                 } catch {
-                    if SQLStreamability.isCancellation(error) {
-                        state.status = .cancelled
-                        state.message = "Cancelled"
-                        state.duration = Date().timeIntervalSince(start)
+                    let stopped = Task.isCancelled || state.status == .cancelled
+                    if stopped || SQLStreamability.isCancellation(error, userCancelled: stopped) {
+                        keepCancelled(state, start: start)
                         markRemainingCancelled(states, after: index)
                         return
                     }
-                    if !retriedSend, Self.isRetryableSendFailure(error) {
+                    if !retriedSend, !stopped, Self.isRetryableSendFailure(error) {
                         retriedSend = true
                         continue
                     }
@@ -382,6 +371,22 @@ extension WorkspaceModel {
             if head.hasPrefix(prefix + " ") { return true }
         }
         return false
+    }
+
+    private func keepCancelled(_ state: StatementResult, rows: Int? = nil, start: Date) {
+        if state.status != .cancelled {
+            state.status = .cancelled
+        }
+        if state.message == nil {
+            if let rows, rows > 0 {
+                state.message = "Cancelled — \(rows) row\(rows == 1 ? "" : "s")"
+            } else {
+                state.message = "Cancelled"
+            }
+        }
+        if state.duration == nil {
+            state.duration = Date().timeIntervalSince(start)
+        }
     }
 
     func markRemainingCancelled(_ states: [StatementResult], after index: Int) {
