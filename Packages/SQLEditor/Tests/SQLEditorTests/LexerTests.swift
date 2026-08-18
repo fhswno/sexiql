@@ -57,6 +57,26 @@ final class LexerTests: XCTestCase {
         XCTAssertEqual(lexer.tokenize("[col]").first?.kind, .identifier)
     }
 
+    func testRedisHashCommentAndKeywords() {
+        let lexer = SQLLexer(dialect: .redis)
+        let tokens = lexer.tokenize("GET foo # comment")
+        XCTAssertEqual(tokens.first?.kind, .keyword)
+        XCTAssertEqual(tokens.first?.text, "GET")
+        XCTAssertTrue(tokens.contains { $0.kind == .comment && $0.text == "# comment" })
+    }
+
+    func testRedisDoesNotTreatDashDashAsComment() {
+        let lexer = SQLLexer(dialect: .redis)
+        let tokens = lexer.tokenize("GET foo--bar")
+        XCTAssertFalse(tokens.contains { $0.kind == .comment })
+    }
+
+    func testRedisQuotedString() {
+        let lexer = SQLLexer(dialect: .redis)
+        let tokens = lexer.tokenize("SET foo \"hello world\"")
+        XCTAssertTrue(tokens.contains { $0.kind == .string && $0.text == "\"hello world\"" })
+    }
+
     func testNumbers() {
         XCTAssertEqual(kinds("3.14"), [.number])
         XCTAssertEqual(kinds("1e10"), [.number])
