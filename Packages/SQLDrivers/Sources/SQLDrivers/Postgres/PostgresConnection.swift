@@ -453,12 +453,15 @@ public actor PostgresConnection: DatabaseConnection {
     private func sendStartupMessage() async throws {
         var payload = Data()
         payload.append(PGWire.int32(196608))
-        let parameters: [(String, String)] = [
+        var parameters: [(String, String)] = [
             ("user", profile.username),
-            ("database", profile.database),
             ("application_name", "SexiQL"),
             ("client_encoding", "UTF8"),
         ]
+        let database = profile.resolvedDatabase
+        if !database.isEmpty {
+            parameters.insert(("database", database), at: 1)
+        }
         for (name, value) in parameters {
             payload.append(PGWire.cstring(name))
             payload.append(PGWire.cstring(value))
