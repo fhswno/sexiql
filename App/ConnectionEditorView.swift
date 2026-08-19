@@ -88,6 +88,11 @@ struct ConnectionEditorView: View {
                         TextField("Port", text: $port)
                         TextField(kind == .redis ? "DB index (0)" : "Database", text: $database)
                     }
+                    if kind == .postgres, database.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("Empty database uses your username (often “postgres”), not the server default you picked in another client.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     TextField(kind == .redis ? "ACL username (optional)" : "Username", text: $username)
                     SecureField("Password", text: $password)
                     if passwordOnFile, password.isEmpty {
