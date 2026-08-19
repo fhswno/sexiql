@@ -310,10 +310,18 @@ struct SidebarConnectionsView: View {
 
     private func connectionSubtitle(_ connection: ConnectionProfile, status: ConnectionManager.SessionStatus) -> String {
         switch status {
-        case .disconnected: return connection.kind.displayName
-        case .connecting: return "\(connection.kind.displayName) · connecting…"
-        case .connected: return "\(connection.kind.displayName) · connected"
-        case .failed: return "\(connection.kind.displayName) · Failed"
+        case .disconnected: return engineSubtitle(connection, suffix: nil)
+        case .connecting: return engineSubtitle(connection, suffix: "connecting…")
+        case .connected: return engineSubtitle(connection, suffix: "connected")
+        case .failed: return engineSubtitle(connection, suffix: "Failed")
         }
+    }
+
+    private func engineSubtitle(_ connection: ConnectionProfile, suffix: String?) -> String {
+        var parts = [connection.kind.displayName]
+        let catalog = connection.displayCatalog
+        if !catalog.isEmpty { parts.append(catalog) }
+        if let suffix { parts.append(suffix) }
+        return parts.joined(separator: " · ")
     }
 }
