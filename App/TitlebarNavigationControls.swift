@@ -17,13 +17,18 @@ struct TitlebarNavigationControls: NSViewRepresentable {
             connections: model.document.connections.map { profile in
                 TitlebarNavigationView.ConnectionItem(
                     id: profile.id,
-                    title: profile.name,
+                    title: {
+                        let catalog = profile.displayCatalog
+                        if catalog.isEmpty { return profile.name }
+                        return "\(profile.name) · \(catalog)"
+                    }(),
                     subtitle: {
+                        let engine = profile.kind.displayName
                         switch model.status(for: profile.id) {
-                        case .connected: return "Connected"
-                        case .connecting: return "Connecting"
-                        case .failed: return "Failed"
-                        case .disconnected: return profile.kind.displayName
+                        case .connected: return "\(engine) · Connected"
+                        case .connecting: return "\(engine) · Connecting"
+                        case .failed: return "\(engine) · Failed"
+                        case .disconnected: return engine
                         }
                     }(),
                     statusColor: {
@@ -176,7 +181,7 @@ final class TitlebarNavigationView: NSView {
             pillButton.topAnchor.constraint(equalTo: pillEffect.topAnchor),
             pillButton.bottomAnchor.constraint(equalTo: pillEffect.bottomAnchor),
 
-            titleLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 140),
+            titleLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 240),
         ])
 
         pillEffect.addSubview(pillButton, positioned: .above, relativeTo: pillStack)
