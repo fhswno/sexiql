@@ -53,7 +53,7 @@ public actor ConnectionManager {
                     kind: profile.kind,
                     host: "127.0.0.1",
                     port: tunnel.localPort,
-                    database: profile.database,
+                    database: profile.resolvedDatabase,
                     username: profile.username,
                     tlsMode: profile.tlsMode,
                     tlsServerName: profile.host,
