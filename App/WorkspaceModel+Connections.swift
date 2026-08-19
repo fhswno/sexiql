@@ -197,7 +197,9 @@ extension WorkspaceModel {
         if profile.kind == .sqlite {
             endpoint = profile.database.isEmpty ? nil : profile.database
         } else {
-            endpoint = "\(profile.host):\(profile.port)"
+            let catalog = profile.displayCatalog
+            let host = "\(profile.host):\(profile.port)"
+            endpoint = catalog.isEmpty ? host : "\(catalog) @ \(host)"
         }
         let failure = ConnectionFailure(
             profileID: profile.id,
