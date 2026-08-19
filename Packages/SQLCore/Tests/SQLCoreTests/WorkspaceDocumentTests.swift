@@ -115,6 +115,19 @@ final class WorkspaceDocumentTests: XCTestCase {
         XCTAssertEqual(AppearanceMode.dark.next, .system)
     }
 
+    func testResolvedDatabaseDefaultsToUsernameForPostgres() {
+        let empty = ConnectionProfile(name: "Prod", kind: .postgres, username: "postgres")
+        XCTAssertEqual(empty.resolvedDatabase, "postgres")
+        XCTAssertEqual(empty.displayCatalog, "postgres")
+
+        let explicit = ConnectionProfile(name: "Prod", kind: .postgres, database: "customer_app", username: "postgres")
+        XCTAssertEqual(explicit.resolvedDatabase, "customer_app")
+        XCTAssertEqual(explicit.displayCatalog, "customer_app")
+
+        let mysql = ConnectionProfile(name: "M", kind: .mysql, username: "root")
+        XCTAssertEqual(mysql.resolvedDatabase, "")
+    }
+
     func testProfileDefaults() {
         let profile = ConnectionProfile(name: "Local", kind: .postgres)
         XCTAssertEqual(profile.port, 5432)
