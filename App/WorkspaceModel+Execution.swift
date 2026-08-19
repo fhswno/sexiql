@@ -92,6 +92,15 @@ extension WorkspaceModel {
 
         let text = resolveSQLToRun(tabID: tabID, override: overrideSQL)
         let kind = document.connections.first(where: { $0.id == profileID })?.kind
+        if kind != .redis, !SQLPayloadGuard.looksLikeSQL(text) {
+            let state = StatementResult(label: text)
+            state.status = .failed
+            state.message = "Doesn't look like SQL — is an error still in the editor?"
+            results[tabID] = [state]
+            selectedResultIndex[tabID] = 0
+            if resultsCollapsed { resultsCollapsed = false }
+            return
+        }
         if let profile = document.connections.first(where: { $0.id == profileID }),
            profile.readOnly,
            StatementWriteGuard.isWrite(text, kind: profile.kind) {
