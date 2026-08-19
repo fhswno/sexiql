@@ -123,6 +123,25 @@ public struct ConnectionProfile: Codable, Sendable, Equatable, Identifiable {
 
     public var credentialAccount: String { id.uuidString }
 
+    public var resolvedDatabase: String {
+        let trimmed = database.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        if kind == .postgres {
+            return username.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return trimmed
+    }
+
+    public var displayCatalog: String {
+        switch kind {
+        case .sqlite:
+            let name = (database as NSString).lastPathComponent
+            return name
+        case .postgres, .mysql, .redis:
+            return resolvedDatabase
+        }
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id, name, kind, host, port, database, username, tlsMode, tlsServerName, useSSH, ssh, readOnly, createdAt
     }
