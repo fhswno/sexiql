@@ -8,7 +8,11 @@ enum ConnectionErrorFormatting {
         let lower = raw.lowercased()
         let endpoint = profile.kind == .sqlite
             ? profile.database
-            : "\(profile.host):\(profile.port)"
+            : {
+                let catalog = profile.displayCatalog
+                let host = "\(profile.host):\(profile.port)"
+                return catalog.isEmpty ? host : "\(catalog) @ \(host)"
+            }()
 
         if lower.hasPrefix("ssh failed") || lower.hasPrefix("ssh tunnel") {
             return raw
