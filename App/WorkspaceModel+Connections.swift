@@ -92,6 +92,7 @@ extension WorkspaceModel {
                     }
                     self.persistSessionToDisk()
                 }
+                await self.loadDatabases(for: profile)
                 await self.loadSchema(for: profile)
             } catch is CancellationError {
                 await MainActor.run {
@@ -148,6 +149,47 @@ extension WorkspaceModel {
                 schemaTables = []
             }
             persistSessionToDisk()
+        }
+    }
+
+    func loadDatabases(for profile: ConnectionProfile) async {
+        guard SchemaBrowser.listDatabasesSQL(kind: profile.kind) != nil else {
+            databasesByProfile[profile.id] = []
+            return
+        }
+        guard let connection = await connectionManager.connection(for: profile.id) else { return }
+        do {
+            let names = try await SchemaBrowser.listDatabases(on: connection)
+            databasesByProfile[profile.id] = names
+        } catch {
+            if databasesByProfile[profile.id] == nil {
+                let current = profile.displayCatalog
+                databasesByProfile[profile.id] = current.isEmpty ? [] : [current]
+            }
+        }
+    }
+
+    func switchDatabase(_ name: String, for profileID: UUID) {
+        guard let index = document.connections.firstIndex(where: { $0.id == profileID }) else { return }
+        let profile = document.connections[index]
+        guard profile.kind == .postgres || profile.kind == .mysql else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if profile.database == trimmed { return }
+        if isProfileBusy(profile.id) {
+            activeError = "A query is running. Stop it before switching database."
+            return
+        }
+        document.connections[index].database = trimmed
+        saveWorkspace()
+        let updated = document.connections[index]
+        connectTasks[updated.id]?.cancel()
+        connectTasks[updated.id] = nil
+        Task {
+            try? await connectionManager.disconnect(updated.id)
+            connectionStatuses[updated.id] = .disconnected
+            schemaByProfile[updated.id] = nil
+            connect(updated)
         }
     }
 
