@@ -87,6 +87,34 @@ public enum SchemaBrowser: Sendable {
         return objects(from: result, kind: kind)
     }
 
+    public static func listDatabasesSQL(kind: DatabaseKind) -> String? {
+        switch kind {
+        case .postgres:
+            return """
+            SELECT datname FROM pg_database
+            WHERE datallowconn AND NOT datistemplate
+            ORDER BY datname
+            """
+        case .mysql:
+            return "SHOW DATABASES"
+        case .sqlite, .redis:
+            return nil
+        }
+    }
+
+    public static func listDatabases(on connection: any DatabaseConnection) async throws -> [String] {
+        guard let sql = listDatabasesSQL(kind: connection.profile.kind) else { return [] }
+        let result = try await connection.execute(sql)
+        return databases(from: result)
+    }
+
+    public static func databases(from result: QueryResult) -> [String] {
+        result.rows.compactMap { row in
+            row.values.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        .filter { !$0.isEmpty }
+    }
+
     public static func objects(from result: QueryResult, kind: DatabaseKind) -> [SchemaObject] {
         result.rows.compactMap { parseObjectRow($0, kind: kind) }
     }
