@@ -91,6 +91,7 @@ final class WorkspaceModel {
     var connectTasks: [UUID: Task<Void, Never>] = [:]
 
     var lastConnectionErrors: [UUID: String] = [:]
+    var databasesByProfile: [UUID: [String]] = [:]
     var pendingWorkspaceSave: DispatchWorkItem?
     var aiTasks: [UUID: Task<Void, Never>] = [:]
     var pendingTabRenameID: UUID?
