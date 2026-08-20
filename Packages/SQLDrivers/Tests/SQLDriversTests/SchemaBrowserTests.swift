@@ -34,6 +34,25 @@ final class SchemaBrowserTests: XCTestCase {
         )
     }
 
+    func testListDatabasesSQL() {
+        XCTAssertTrue(SchemaBrowser.listDatabasesSQL(kind: .postgres)?.contains("pg_database") == true)
+        XCTAssertEqual(SchemaBrowser.listDatabasesSQL(kind: .mysql), "SHOW DATABASES")
+        XCTAssertNil(SchemaBrowser.listDatabasesSQL(kind: .sqlite))
+        XCTAssertNil(SchemaBrowser.listDatabasesSQL(kind: .redis))
+    }
+
+    func testDatabasesFromResult() {
+        let result = QueryResult(
+            columns: [SQLColumn(name: "datname", dataType: "text", ordinal: 0)],
+            rows: [
+                SQLRow(values: [.string("customer_app")]),
+                SQLRow(values: [.string("postgres")]),
+                SQLRow(values: [.null]),
+            ]
+        )
+        XCTAssertEqual(SchemaBrowser.databases(from: result), ["customer_app", "postgres"])
+    }
+
     func testCancelRequestPacket() {
         let packet = PGWire.cancelRequest(processID: 42, secretKey: 99)
         XCTAssertEqual(packet.count, 16)
