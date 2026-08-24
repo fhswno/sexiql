@@ -114,7 +114,6 @@ struct SexiQLApp: App {
                 Button("Copy Selected Rows") {
                     model.copySelectedRowsHandler?()
                 }
-                .keyboardShortcut("c", modifiers: .command)
                 .disabled(!model.canCopySelectedRows)
                 Button("Add Row") {
                     model.addResultRowHandler?()

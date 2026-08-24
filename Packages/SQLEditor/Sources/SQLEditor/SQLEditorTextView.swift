@@ -345,6 +345,12 @@ public final class SQLEditorTextView: NSTextView {
 
     public override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "c" {
+            if selectedRange().length > 0 {
+                copy(nil)
+                return true
+            }
+        }
         if flags == .command, event.charactersIgnoringModifiers == "/" {
             toggleLineComment()
             return true
