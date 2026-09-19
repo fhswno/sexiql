@@ -204,4 +204,17 @@ final class WorkspaceDocumentTests: XCTestCase {
         try store.save(doc)
         XCTAssertEqual(try store.load(), doc)
     }
+
+    func testSavedFileIsOwnerReadableOnly() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WorkspaceDocumentTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let store = WorkspaceStore(baseDirectory: dir)
+        try store.save(WorkspaceDocument())
+        try store.save(WorkspaceDocument())
+
+        let permissions = try FileManager.default.attributesOfItem(atPath: store.fileURL.path)[.posixPermissions] as? NSNumber
+        XCTAssertEqual(permissions?.intValue, 0o600)
+    }
 }
