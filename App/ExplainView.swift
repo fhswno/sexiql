@@ -8,23 +8,33 @@ struct ExplainView: View {
     let tabID: UUID
     let plan: ExplainNode
 
+    @State private var copied = false
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: SexiQLSpace.md) {
+            HStack(spacing: SexiQLSpace.sm) {
                 Label("Query Plan", systemImage: "point.3.connected.trianglepath.dotted")
                     .font(.callout.weight(.semibold))
                 Spacer()
-                Button {
-                    copyPlan()
-                } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-                .buttonStyle(.borderless)
+                PlanPillButton(
+                    systemImage: copied ? "checkmark" : "doc.on.doc",
+                    title: copied ? "Copied" : "Copy",
+                    highlight: copied,
+                    action: {
+                        copyPlan()
+                        copied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            copied = false
+                        }
+                    }
+                )
                 .help("Copy plan as text")
-                Button("Back to Results") {
-                    model.clearExplain(tabID)
-                }
-                .buttonStyle(.borderless)
+                PlanPillButton(
+                    systemImage: "chevron.backward",
+                    title: "Back to Results",
+                    highlight: false,
+                    action: { model.clearExplain(tabID) }
+                )
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -213,5 +223,40 @@ private struct FlowMetrics: View {
                     .textSelection(.enabled)
             }
         }
+    }
+}
+
+private struct PlanPillButton: View {
+    let systemImage: String
+    let title: String
+    var highlight: Bool = false
+    var action: () -> Void
+
+    @State private var hovering = false
+
+    private var tint: Color {
+        if highlight { return SexiQLColors.connected }
+        return hovering ? Color.accentColor : .secondary
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: systemImage)
+                Text(title)
+            }
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                tint.opacity(hovering || highlight ? 0.15 : 0.12),
+                in: Capsule(style: .continuous)
+            )
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .pointerCursor()
+        .onHover { hovering = $0 }
     }
 }
