@@ -36,6 +36,7 @@ public struct WorkspaceStore: Sendable {
         try FileManager.default.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
         let data = try encoder.encode(document)
         try data.write(to: fileURL, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
     }
 
     public func delete() throws {
