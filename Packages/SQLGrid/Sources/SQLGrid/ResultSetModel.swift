@@ -42,13 +42,21 @@ public struct ResultSetModel: Sendable, Equatable {
     public private(set) var rows: [SQLRow]
     public private(set) var totalRowCount: Int?
     public private(set) var isComplete: Bool
+    public private(set) var isTruncated: Bool
     public private(set) var editedCells: Set<CellKey>
 
-    public init(columns: [GridColumn], rows: [SQLRow] = [], totalRowCount: Int? = nil, isComplete: Bool = false, editedCells: Set<CellKey> = []) {
+    public init(
+        columns: [GridColumn],
+        rows: [SQLRow] = [],
+        totalRowCount: Int? = nil,
+        isComplete: Bool = false,
+        editedCells: Set<CellKey> = []
+    ) {
         self.columns = columns
         self.rows = rows
         self.totalRowCount = totalRowCount
         self.isComplete = isComplete
+        self.isTruncated = false
         self.editedCells = editedCells
     }
 
@@ -65,6 +73,10 @@ public struct ResultSetModel: Sendable, Equatable {
     public mutating func finish(totalRowCount: Int? = nil) {
         isComplete = true
         self.totalRowCount = totalRowCount ?? rows.count
+    }
+
+    public mutating func markTruncated() {
+        isTruncated = true
     }
 
     public mutating func setValue(_ value: SQLValue, at row: Int, column: Int) {
