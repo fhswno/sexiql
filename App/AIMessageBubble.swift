@@ -152,7 +152,7 @@ struct AIMessageBubble: View {
                 Button("Save & regenerate") {
                     onCommitEdit()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.borderedProminent).pointerCursor()
                 .disabled(editDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .keyboardShortcut(.defaultAction)
             }
@@ -177,7 +177,7 @@ struct AIMessageBubble: View {
                 .frame(width: 26, height: 24)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plain).pointerCursor()
         .disabled(disabled)
         .help(help)
         .accessibilityLabel(help)
