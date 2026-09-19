@@ -18,6 +18,19 @@ final class MySQLWireTests: XCTestCase {
         XCTAssertEqual(try reader.readLengthEncodedString(), "hello")
     }
 
+    func testLengthEncodedBytesRejectOverflowingReaderBounds() {
+        var payload = Data([0xfe])
+        payload.append(MySQLWire.uint64(UInt64(Int.max)))
+        var reader = MySQLByteReader(data: payload)
+        XCTAssertThrowsError(try reader.readLengthEncodedBytes()) { error in
+            guard case MySQLWireError.truncated(let detail) = error else {
+                XCTFail("expected truncation, got \(error)")
+                return
+            }
+            XCTAssertTrue(detail.contains("readBytes"), "unexpected detail: \(detail)")
+        }
+    }
+
     func testPacketFrame() {
         let packet = MySQLPacket(sequence: 3, payload: Data([0x03, 0x41, 0x42]))
         XCTAssertEqual(packet.encoded(), Data([3, 0, 0, 3, 3, 0x41, 0x42]))
