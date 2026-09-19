@@ -31,6 +31,11 @@ struct SexiQLApp: App {
                     model.openQueryFile()
                 }
                 .keyboardShortcut("o", modifiers: .command)
+                Button("Import CSV…") {
+                    model.requestImportCSV()
+                }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+                .disabled(model.selectedConnectionID == nil)
             }
             CommandGroup(replacing: .saveItem) {
                 Button("Save") {
@@ -42,6 +47,15 @@ struct SexiQLApp: App {
                     model.saveActiveQueryFileAs()
                 }
                 .keyboardShortcut("s", modifiers: [.command, .option])
+                .disabled(model.selectedTabID == nil)
+            }
+            CommandGroup(after: .saveItem) {
+                Button("Close Tab") {
+                    if let tabID = model.selectedTabID {
+                        model.closeTab(tabID)
+                    }
+                }
+                .keyboardShortcut("w", modifiers: .command)
                 .disabled(model.selectedTabID == nil)
             }
 
@@ -58,7 +72,7 @@ struct SexiQLApp: App {
                         model.cancelRun(tabID)
                     }
                 }
-                .keyboardShortcut(".", modifiers: [.command, .option])
+                .keyboardShortcut(".", modifiers: .command)
                 .disabled(!model.isQueryRunning(on: model.selectedTabID))
                 Button("Explain Plan") {
                     if let tabID = model.selectedTabID {
@@ -161,7 +175,7 @@ struct SexiQLApp: App {
                 Button(model.focusMode ? "Exit Focus Mode" : "Focus Mode") {
                     model.toggleFocusMode()
                 }
-                .keyboardShortcut(".", modifiers: .command)
+                .keyboardShortcut("f", modifiers: [.command, .option])
 
                 Divider()
 
@@ -173,6 +187,19 @@ struct SexiQLApp: App {
                     .keyboardShortcut("3", modifiers: .command)
                 Button("History") { model.setSidebarMode(.history) }
                     .keyboardShortcut("4", modifiers: .command)
+
+                Divider()
+
+                Button("Show Previous Tab") {
+                    model.cycleSelectedTab(-1)
+                }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+                .disabled(model.document.openTabs.count < 2)
+                Button("Show Next Tab") {
+                    model.cycleSelectedTab(1)
+                }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                .disabled(model.document.openTabs.count < 2)
 
                 Divider()
 
