@@ -5,7 +5,8 @@ import SQLUI
 
 struct SidebarSchemaView: View {
     @Environment(WorkspaceModel.self) private var model
-    @Binding var showingFileImporter: Bool
+    @State private var importHover = false
+    @State private var refreshHover = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -16,25 +17,49 @@ struct SidebarSchemaView: View {
                         Button {
                             model.refreshSchema()
                         } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.caption.weight(.semibold))
-                                .frame(width: 22, height: 22)
-                                .contentShape(Rectangle())
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.caption2)
+                                Text("Refresh")
+                                    .font(.caption2.weight(.medium))
+                            }
+                            .foregroundStyle(refreshHover ? Color.accentColor : .secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(
+                                refreshHover ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.12),
+                                in: Capsule(style: .continuous)
+                            )
+                            .contentShape(Capsule(style: .continuous))
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.plain)
+                        .pointerCursor()
+                        .onHover { refreshHover = $0 }
                         .help("Refresh schema")
                         .disabled(model.isSchemaLoading || model.isQueryRunning(on: model.selectedTabID))
 
                         if model.document.connections.first(where: { $0.id == selectedID })?.kind != .redis {
                             Button {
-                                showingFileImporter = true
+                                model.requestImportCSV()
                             } label: {
-                                Image(systemName: "square.and.arrow.down")
-                                    .font(.caption.weight(.semibold))
-                                    .frame(width: 22, height: 22)
-                                    .contentShape(Rectangle())
+                                HStack(spacing: 4) {
+                                    Image(systemName: "square.and.arrow.down")
+                                        .font(.caption2)
+                                    Text("Import")
+                                        .font(.caption2.weight(.medium))
+                                }
+                                .foregroundStyle(importHover ? Color.accentColor : .secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(
+                                    importHover ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.12),
+                                    in: Capsule(style: .continuous)
+                                )
+                                .contentShape(Capsule(style: .continuous))
                             }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.plain)
+                            .pointerCursor()
+                            .onHover { importHover = $0 }
                             .help("Import CSV…")
                         }
                     }
@@ -211,7 +236,7 @@ struct SidebarSchemaView: View {
                                 systemImage: "arrow.right.square"
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plain).pointerCursor()
                         .help("Open \(key.refTable)")
                         .contextMenu {
                             Button("Open \(key.refTable)") { model.openForeignKey(key) }
@@ -282,7 +307,7 @@ struct SidebarSchemaView: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 14, height: 22)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plain).pointerCursor()
                 .help(expanded ? "Collapse columns" : "Show columns")
 
                 Button {
@@ -298,7 +323,7 @@ struct SidebarSchemaView: View {
                     }
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plain).pointerCursor()
                 .help(object.kind == .key ? "Open key" : "Open SELECT * LIMIT 1000")
             }
             .padding(.vertical, 2)
