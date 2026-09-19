@@ -55,6 +55,7 @@ struct CodeBlockTextView: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
+    @MainActor
     final class Coordinator {
         weak var textView: NSTextView?
 
