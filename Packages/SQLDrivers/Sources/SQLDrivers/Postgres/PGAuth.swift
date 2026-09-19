@@ -44,8 +44,13 @@ public struct SCRAMClient: Sendable, Equatable {
         guard let nonce, let salt, let iterations, iterations > 0 else {
             throw PGWireError.invalidMessage
         }
+        guard iterations <= maximumIterations else {
+            throw PGWireError.excessiveIterations(iterations)
+        }
         return ServerFirst(nonce: nonce, salt: salt, iterations: iterations)
     }
+
+    public static let maximumIterations = 128_000
 
     public func clientFinalMessage(serverFirst: ServerFirst) throws -> (clientFinal: String, serverSignature: Data) {
         let clientFinalWithoutProof = "c=biws,r=\(serverFirst.nonce)"
