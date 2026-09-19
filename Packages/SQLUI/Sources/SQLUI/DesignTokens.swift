@@ -27,6 +27,7 @@ public enum SexiQLLayout {
     public static let inspectorMax: CGFloat = 380
     public static let editorMinHeight: CGFloat = 100
     public static let resultsMinHeight: CGFloat = 120
+    public static let resultsIdealHeight: CGFloat = 300
     public static let tabMaxWidth: CGFloat = 160
     public static let secondaryChromeHeight: CGFloat = 40
     public static let panelChromeHorizontal: CGFloat = 16
