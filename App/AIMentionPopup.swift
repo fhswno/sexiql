@@ -44,7 +44,7 @@ struct AIMentionPopup: View {
                         .foregroundStyle(offset == selectedIndex ? Color.white : Color.primary)
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plain).pointerCursor()
                 }
             }
         }
