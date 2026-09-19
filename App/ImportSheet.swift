@@ -1,5 +1,8 @@
 import SwiftUI
+import SQLCore
+import SQLDrivers
 import SQLImportExport
+import SQLUI
 
 struct ImportSheet: View {
     @Environment(WorkspaceModel.self) private var model
@@ -8,11 +11,17 @@ struct ImportSheet: View {
         VStack(spacing: 0) {
             header
             Divider()
-            mappingArea
+            Form {
+                destinationSection
+                formatSection
+                mappingSection
+                previewSection
+            }
+            .formStyle(.grouped)
             Divider()
             footer
         }
-        .frame(width: 620, height: 520)
+        .frame(width: 660, height: 640)
     }
 
     private var header: some View {
@@ -31,81 +40,114 @@ struct ImportSheet: View {
         model.importSession ?? ImportSession(csvColumns: [], csvRows: [], hasHeader: true)
     }
 
-    private var mappingArea: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Text("Target table")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 90, alignment: .leading)
+    private var targetProfile: ConnectionProfile? {
+        session.profileID.flatMap { id in
+            model.document.connections.first(where: { $0.id == id })
+        }
+    }
+
+    private var destinationSection: some View {
+        Section("Destination") {
+            LabeledContent("Connection") {
+                HStack(spacing: 6) {
+                    if let profile = targetProfile {
+                        StatusDot(
+                            color: model.status(for: profile.id) == .connected
+                                ? SexiQLColors.connected
+                                : SexiQLColors.disconnected,
+                            size: 7
+                        )
+                        Text(profile.name)
+                            .lineLimit(1)
+                        if profile.readOnly {
+                            Text("Read-only")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(.orange.opacity(0.15), in: Capsule(style: .continuous))
+                        }
+                    } else {
+                        Text("—")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            LabeledContent("Target table") {
                 Picker("", selection: targetTableBinding) {
                     ForEach(model.schemaTables, id: \.self) { table in
                         Text(table).tag(table)
                     }
                 }
                 .labelsHidden()
-                .frame(width: 220)
-                Spacer()
-                Toggle("First row is header", isOn: headerBinding)
+            }
+            LabeledContent("First row") {
+                Toggle("Is header", isOn: headerBinding)
                     .toggleStyle(.checkbox)
-                    .font(.caption)
             }
+        }
+    }
 
-            HStack(spacing: 12) {
-                dialectPicker("Delimiter", selection: delimiterBinding) {
-                    ForEach(CSVDelimiterKind.allCases) { kind in
-                        Text(kind.displayName).tag(kind)
-                    }
-                }
-                dialectPicker("Quote", selection: quoteBinding) {
-                    Text("\"").tag(false)
-                    Text("'").tag(true)
-                }
-                dialectPicker("Encoding", selection: encodingBinding) {
-                    ForEach(CSVTextEncoding.allCases) { encoding in
-                        Text(encoding.displayName).tag(encoding)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-
-            Text("Column mapping")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(session.tableColumns, id: \.self) { tableColumn in
-                        HStack(spacing: 8) {
-                            Text(tableColumn)
-                                .font(.callout)
-                                .frame(width: 130, alignment: .leading)
-                                .lineLimit(1)
-                            Picker("", selection: mappingBinding(for: tableColumn)) {
-                                Text("— skip —").tag("")
-                                ForEach(session.csvColumns, id: \.self) { csvColumn in
-                                    Text(csvColumn).tag(csvColumn)
-                                }
-                            }
-                            .labelsHidden()
+    private var formatSection: some View {
+        Section("CSV format") {
+            HStack(spacing: 20) {
+                LabeledContent("Delimiter") {
+                    Picker("", selection: delimiterBinding) {
+                        ForEach(CSVDelimiterKind.allCases) { kind in
+                            Text(kind.displayName).tag(kind)
                         }
                     }
-                    if session.tableColumns.isEmpty {
-                        Text("Select a target table to see its columns.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    .labelsHidden()
+                    .frame(width: 110)
+                }
+                LabeledContent("Quote") {
+                    Picker("", selection: quoteBinding) {
+                        Text("\"").tag(false)
+                        Text("'").tag(true)
+                    }
+                    .labelsHidden()
+                    .frame(width: 70)
+                }
+                LabeledContent("Encoding") {
+                    Picker("", selection: encodingBinding) {
+                        ForEach(CSVTextEncoding.allCases) { encoding in
+                            Text(encoding.displayName).tag(encoding)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 110)
+                }
+            }
+        }
+    }
+
+    private var mappingSection: some View {
+        Section("Column mapping — table column ← CSV column") {
+            if session.tableColumns.isEmpty {
+                Text("Select a target table to see its columns.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(session.tableColumns, id: \.self) { tableColumn in
+                    LabeledContent(tableColumn) {
+                        Picker("", selection: mappingBinding(for: tableColumn)) {
+                            Text("— skip —").tag("")
+                            ForEach(session.csvColumns, id: \.self) { csvColumn in
+                                Text(csvColumn).tag(csvColumn)
+                            }
+                        }
+                        .labelsHidden()
+                        .controlSize(.small)
                     }
                 }
-                .padding(2)
             }
+        }
+    }
 
-            Text("Preview")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
+    private var previewSection: some View {
+        Section("Preview") {
             previewTable
         }
-        .padding(14)
     }
 
     private var previewTable: some View {
@@ -136,8 +178,9 @@ struct ImportSheet: View {
                 }
             }
             .padding(4)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: 110)
+        .frame(height: 96)
         .background(.quaternary.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
     }
 
@@ -161,10 +204,13 @@ struct ImportSheet: View {
             Button("Cancel") {
                 model.showingImportSheet = false
             }
+            .keyboardShortcut(.cancelAction)
+            .pointerCursor()
             Button("Import") {
                 Task { await model.runImport() }
             }
             .keyboardShortcut(.defaultAction)
+            .pointerCursor()
             .disabled(session.isRunning || session.tableColumns.isEmpty)
         }
         .padding(14)
@@ -218,21 +264,6 @@ struct ImportSheet: View {
                 model.reloadImportSession()
             }
         )
-    }
-
-    private func dialectPicker<Value: Hashable, Content: View>(
-        _ title: String,
-        selection: Binding<Value>,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        HStack(spacing: 6) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Picker("", selection: selection, content: content)
-                .labelsHidden()
-                .frame(minWidth: 90)
-        }
     }
 
     private func mappingBinding(for tableColumn: String) -> Binding<String> {
