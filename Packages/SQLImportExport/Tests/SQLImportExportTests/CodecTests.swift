@@ -96,6 +96,18 @@ final class JSONCodecTests: XCTestCase {
         XCTAssertEqual(parsed[0]["score"] as? Double, 9.5)
     }
 
+    func testEncodeDoubleUsesShortestRoundTrip() throws {
+        let json = try JSONCodec.encode(
+            columns: ["score"],
+            rows: [[.double(9.9)]]
+        )
+        XCTAssertTrue(json.contains("9.9"), "expected shortest double, got: \(json)")
+        XCTAssertFalse(json.contains("90000000"), "unexpected 17-digit artifact: \(json)")
+
+        let parsed = try JSONSerialization.jsonObject(with: Data(json.utf8)) as! [[String: Any]]
+        XCTAssertEqual(parsed[0]["score"] as? Double, 9.9)
+    }
+
     func testParseObjects() throws {
         let json = """
         [{"id": 1, "name": "ada"}, {"id": 2, "name": "bob", "extra": "x"}]
