@@ -5,6 +5,7 @@ import SQLUI
 struct SidebarHistoryView: View {
     @Environment(WorkspaceModel.self) private var model
     @State private var showingClearConfirm = false
+    @State private var clearHover = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -13,13 +14,26 @@ struct SidebarHistoryView: View {
                     Button {
                         showingClearConfirm = true
                     } label: {
-                        Image(systemName: "trash")
-                            .font(.caption.weight(.semibold))
-                            .frame(width: 22, height: 22)
-                            .contentShape(Rectangle())
+                        HStack(spacing: 4) {
+                            Image(systemName: "trash")
+                                .font(.caption2)
+                            Text("Clear History")
+                                .font(.caption2.weight(.medium))
+                        }
+                        .foregroundStyle(clearHover ? SexiQLColors.failed : .secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            (clearHover ? SexiQLColors.failed.opacity(0.15) : Color.secondary.opacity(0.12)),
+                            in: Capsule(style: .continuous)
+                        )
+                        .contentShape(Capsule(style: .continuous))
                     }
-                    .buttonStyle(.borderless)
-                    .help("Clear History…")
+                    .buttonStyle(.plain).pointerCursor()
+                    .onHover { hovering in
+                        clearHover = hovering
+                    }
+                    .help("Clear all history")
                 }
             }
 
@@ -62,7 +76,7 @@ struct SidebarHistoryView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .contentShape(Rectangle())
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.plain).pointerCursor()
                                 .padding(.horizontal, SexiQLSpace.lg)
                                 .padding(.vertical, SexiQLSpace.sm)
 
@@ -72,7 +86,7 @@ struct SidebarHistoryView: View {
                                     Image(systemName: "play.circle")
                                         .foregroundStyle(Color.accentColor)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.plain).pointerCursor()
                                 .help("Run in a new tab")
                                 .padding(.trailing, SexiQLSpace.md)
                             }
