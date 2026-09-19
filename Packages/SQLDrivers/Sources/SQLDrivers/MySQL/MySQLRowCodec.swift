@@ -1,13 +1,28 @@
 import Foundation
 
 enum MySQLRowCodec: Sendable {
-    static func isTerminator(_ payload: Data) -> Bool {
-        guard let first = payload.first else { return true }
-        if first == 0xfe && payload.count < 9 { return true }
-        if first == 0x00 && payload.count >= 7 {
-            return (try? MySQLAuth.parseOK(payload)) != nil
+    static let maximumTerminatorPayload = 0xFF_FFFF
+
+    static func rowTerminatorStatus(_ payload: Data, deprecateEOF: Bool) -> UInt16? {
+        guard let first = payload.first, first == 0xfe, payload.count <= Self.maximumTerminatorPayload else {
+            return nil
         }
-        return false
+        if !deprecateEOF {
+            guard payload.count >= 5 else { return nil }
+            return UInt16(payload[payload.startIndex + 3])
+                | (UInt16(payload[payload.startIndex + 4]) << 8)
+        }
+        var reader = MySQLByteReader(data: payload, offset: 1)
+        guard ((try? reader.readLengthEncodedInteger()) ?? nil) != nil,
+              ((try? reader.readLengthEncodedInteger()) ?? nil) != nil,
+              let status = try? reader.readUInt16() else {
+            return nil
+        }
+        return status
+    }
+
+    static func isRowTerminator(_ payload: Data, deprecateEOF: Bool) -> Bool {
+        rowTerminatorStatus(payload, deprecateEOF: deprecateEOF) != nil
     }
 
     static func parseTextRow(_ payload: Data, columns: [SQLColumn]) throws -> SQLRow {
@@ -43,13 +58,23 @@ enum MySQLRowCodec: Sendable {
         definitions.enumerated().map { index, definition in
             SQLColumn(
                 name: definition.name,
-                dataType: displayType(definition.type),
+                dataType: dataType(for: definition),
                 isNullable: (definition.flags & 0x0001) == 0,
                 ordinal: index,
                 tableName: definition.tableName,
                 tableSchema: definition.schema
             )
         }
+    }
+
+    static func dataType(for definition: MySQLColumnDefinition) -> String {
+        if definition.type == MySQLColumnType.tiny, definition.columnLength == 1 {
+            return "bool"
+        }
+        if definition.characterSet != 63, MySQLColumnType.isTextualBlob(definition.type) {
+            return "text"
+        }
+        return displayType(definition.type)
     }
 
     static func displayType(_ type: UInt8) -> String {
@@ -82,6 +107,12 @@ enum MySQLRowCodec: Sendable {
             return Int64(text).map(SQLValue.int) ?? .string(text)
         case "float", "double":
             return Double(text).map(SQLValue.double) ?? .string(text)
+        case "bool":
+            switch text.lowercased() {
+            case "true", "t", "1": return .bool(true)
+            case "false", "f", "0": return .bool(false)
+            default: return Int64(text).map(SQLValue.int) ?? .string(text)
+            }
         case "blob", "tinyblob", "mediumblob", "longblob":
             return .data(bytes)
         default:
