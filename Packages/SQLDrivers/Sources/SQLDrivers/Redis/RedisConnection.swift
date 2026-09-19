@@ -68,6 +68,7 @@ public actor RedisConnection: DatabaseConnection {
 
     public func execute(_ sql: String, parameters: [SQLValue]) async throws -> QueryResult {
         try requireConnected()
+        try enforceReadOnly(sql)
         let tokens = tokens(for: sql, parameters: parameters)
         guard !tokens.isEmpty else { return QueryResult() }
         let reply = try await send(tokens)
@@ -188,13 +189,18 @@ public actor RedisConnection: DatabaseConnection {
     private func send(_ arguments: [String]) async throws -> RedisReply {
         try await transport.write(RedisCommand.encode(arguments))
         while true {
-            if let reply = try decoder.consumeReply() {
-                if case .error(let message) = reply {
-                    throw RedisError.serverError(message)
+            do {
+                if let reply = try decoder.consumeReply() {
+                    if case .error(let message) = reply {
+                        throw RedisError.serverError(message)
+                    }
+                    return reply
                 }
-                return reply
+                try decoder.append(try await transport.readSome(max: 16 * 1024))
+            } catch {
+                decoder = RedisDecoder(data: Data())
+                throw error
             }
-            decoder.append(try await transport.readSome(max: 16 * 1024))
         }
     }
 }
