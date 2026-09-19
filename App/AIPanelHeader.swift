@@ -25,7 +25,7 @@ struct AIPanelHeader: View {
             Spacer(minLength: 0)
             if streaming {
                 Button("Stop", action: onStop)
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.borderless).pointerCursor()
                     .font(SexiQLType.rowSubtitle)
                     .help("Stop generating")
             }
@@ -36,7 +36,7 @@ struct AIPanelHeader: View {
                         .frame(width: 22, height: 22)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.borderless).pointerCursor()
                 .foregroundStyle(.secondary)
                 .help("Clear conversation")
             }
@@ -46,7 +46,7 @@ struct AIPanelHeader: View {
                     .frame(width: 22, height: 22)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.borderless).pointerCursor()
             .foregroundStyle(.secondary)
             .help("Close AI panel")
         }
