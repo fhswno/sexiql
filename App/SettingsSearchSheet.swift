@@ -39,7 +39,7 @@ struct SettingsSearchSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plain).pointerCursor()
             }
             .listStyle(.inset)
             Divider()
@@ -52,6 +52,7 @@ struct SettingsSearchSheet: View {
                     model.showingSettingsSearch = false
                 }
                 .keyboardShortcut(.cancelAction)
+                .pointerCursor()
             }
             .padding(12)
         }
