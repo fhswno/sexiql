@@ -176,6 +176,20 @@ final class PGWireTests: XCTestCase {
         XCTAssertFalse(PGError(code: "42P01", message: "relation \"t\" does not exist").isConnectionDrop)
         XCTAssertFalse(PGError(code: "57014", message: "canceling statement due to user request").isConnectionDrop)
     }
+
+    func testCommandTagParsesNullTerminatedPayload() {
+        var payload = Data("UPDATE 1".utf8)
+        payload.append(0)
+        XCTAssertEqual(PGRowCodec.parseCommandTag(payload), "UPDATE 1")
+        XCTAssertEqual(PGRowCodec.affectedRows(from: PGRowCodec.parseCommandTag(payload)), 1)
+
+        var insert = Data("INSERT 0 3".utf8)
+        insert.append(0)
+        XCTAssertEqual(PGRowCodec.affectedRows(from: PGRowCodec.parseCommandTag(insert)), 3)
+
+        XCTAssertEqual(PGRowCodec.affectedRows(from: PGRowCodec.parseCommandTag(Data("DELETE 42\0".utf8))), 42)
+        XCTAssertNil(PGRowCodec.affectedRows(from: PGRowCodec.parseCommandTag(Data("BEGIN\0".utf8))))
+    }
 }
 
 final class PGTypeTests: XCTestCase {
@@ -251,6 +265,18 @@ final class PGSCRAMTests: XCTestCase {
     func testMalformedServerFirst() {
         XCTAssertThrowsError(try SCRAMClient.parseServerFirst("r=nosalt"))
         XCTAssertThrowsError(try SCRAMClient.parseServerFirst("r=x,s=!!!,i=4096"))
+    }
+
+    func testServerFirstIterationCap() throws {
+        let atCap = try SCRAMClient.parseServerFirst("r=x,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=\(SCRAMClient.maximumIterations)")
+        XCTAssertEqual(atCap.iterations, SCRAMClient.maximumIterations)
+
+        do {
+            _ = try SCRAMClient.parseServerFirst("r=x,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=\(SCRAMClient.maximumIterations + 1)")
+            XCTFail("expected excessive iterations to be rejected")
+        } catch let error as PGWireError {
+            XCTAssertEqual(error, .excessiveIterations(SCRAMClient.maximumIterations + 1))
+        }
     }
 
     func testMD5PasswordDeterministic() {
