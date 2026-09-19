@@ -18,6 +18,12 @@ extension WorkspaceModel {
         }
         let sql = resolveSQLToRun(tabID: tabID, override: overrideSQL)
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let statements = SQLStatementSplitter().split(sql)
+        guard statements.count == 1 else {
+            explainErrors[tabID] = "Explain works on a single statement — select just one."
+            return
+        }
+        let explainTarget = statements[0].text
         if resultsCollapsed { resultsCollapsed = false }
         explainingTabs.insert(tabID)
         explainPlans[tabID] = nil
@@ -32,11 +38,11 @@ extension WorkspaceModel {
                 let explainSQL: String
                 switch profile.kind {
                 case .postgres:
-                    explainSQL = "EXPLAIN (FORMAT JSON) \(sql)"
+                    explainSQL = "EXPLAIN (FORMAT JSON) \(explainTarget)"
                 case .mysql:
-                    explainSQL = "EXPLAIN FORMAT=JSON \(sql)"
+                    explainSQL = "EXPLAIN FORMAT=JSON \(explainTarget)"
                 case .sqlite:
-                    explainSQL = "EXPLAIN QUERY PLAN \(sql)"
+                    explainSQL = "EXPLAIN QUERY PLAN \(explainTarget)"
                 case .redis:
                     throw SQLDriverError.notImplemented(feature: "Explain is not available for Redis")
                 }
@@ -101,12 +107,6 @@ extension WorkspaceModel {
             if resultsCollapsed { resultsCollapsed = false }
             return
         }
-        if let profile = document.connections.first(where: { $0.id == profileID }),
-           profile.readOnly,
-           StatementWriteGuard.isWrite(text, kind: profile.kind) {
-            activeError = "Connection is read-only."
-            return
-        }
         let statements: [SQLStatement]
         if kind == .redis {
             statements = RedisCommand.splitStatements(text).map { SQLStatement(text: $0) }
@@ -114,6 +114,13 @@ extension WorkspaceModel {
             statements = SQLStatementSplitter().split(text)
         }
         guard !statements.isEmpty else { return }
+
+        if let profile = document.connections.first(where: { $0.id == profileID }),
+           profile.readOnly,
+           statements.contains(where: { StatementWriteGuard.isWrite($0.text, kind: profile.kind) }) {
+            activeError = "Connection is read-only."
+            return
+        }
 
         explainPlans[tabID] = nil
         explainErrors[tabID] = nil
@@ -249,6 +256,7 @@ extension WorkspaceModel {
                 return
             }
             let state = states[index]
+            state.startedAt = Date()
             var retriedSend = false
             statementAttempt: while true {
                 do {
@@ -293,7 +301,7 @@ extension WorkspaceModel {
                             } else {
                                 state.status = .failed
                                 state.message = annotatedQueryError(error, profileID: profileID)
-                                state.duration = Date().timeIntervalSince(start)
+                                state.duration = finishDuration(state, batchStart: start)
                             }
                             markRemainingCancelled(states, after: index)
                             return
@@ -304,7 +312,7 @@ extension WorkspaceModel {
                         if Task.isCancelled {
                             state.status = .cancelled
                             state.message = "Cancelled"
-                            state.duration = Date().timeIntervalSince(start)
+                            state.duration = finishDuration(state, batchStart: start)
                             markRemainingCancelled(states, after: index)
                             return
                         }
@@ -321,7 +329,7 @@ extension WorkspaceModel {
                             state.message = result.affectedRowCount.map { "\($0) row(s) affected" } ?? "OK"
                         }
                     }
-                    state.duration = Date().timeIntervalSince(start)
+                    state.duration = finishDuration(state, batchStart: start)
                     recordHistory(statement.text, profileID: profileID)
                     if Self.statementChangesSchema(statement.text) {
                         refreshSchema(for: profileID)
@@ -347,7 +355,7 @@ extension WorkspaceModel {
                     }
                     state.status = .failed
                     state.message = annotatedQueryError(error, profileID: profileID)
-                    state.duration = Date().timeIntervalSince(start)
+                    state.duration = finishDuration(state, batchStart: start)
                     markRemainingCancelled(states, after: index)
                     return
                 }
@@ -388,6 +396,10 @@ extension WorkspaceModel {
         return false
     }
 
+    private func finishDuration(_ state: StatementResult, batchStart: Date) -> TimeInterval {
+        Date().timeIntervalSince(state.startedAt ?? batchStart)
+    }
+
     private func keepCancelled(_ state: StatementResult, rows: Int? = nil, start: Date) {
         if state.status != .cancelled {
             state.status = .cancelled
@@ -400,7 +412,7 @@ extension WorkspaceModel {
             }
         }
         if state.duration == nil {
-            state.duration = Date().timeIntervalSince(start)
+            state.duration = finishDuration(state, batchStart: start)
         }
     }
 
