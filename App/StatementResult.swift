@@ -20,6 +20,7 @@ final class StatementResult: Identifiable {
     var model = ResultSetModel(columns: [])
     var message: String?
     var duration: TimeInterval?
+    var startedAt: Date?
     var sqlColumns: [SQLColumn] = []
     var editableTable: EditableTable?
     var isResolvingEditable = false
