@@ -6,7 +6,6 @@ import UniformTypeIdentifiers
 
 struct SidebarView: View {
     @Environment(WorkspaceModel.self) private var model
-    @State private var showingFileImporter = false
     @State private var renameTarget: SavedQuery?
     @State private var renameDraft = ""
 
@@ -24,7 +23,7 @@ struct SidebarView: View {
                 case .connections:
                     SidebarConnectionsView()
                 case .schema:
-                    SidebarSchemaView(showingFileImporter: $showingFileImporter)
+                    SidebarSchemaView()
                 case .saved:
                     SidebarSavedView(
                         renameTarget: $renameTarget,
@@ -48,25 +47,18 @@ struct SidebarView: View {
                     Spacer()
                     Button("Cancel") { renameTarget = nil }
                         .keyboardShortcut(.cancelAction)
+                        .pointerCursor()
                     Button("Rename") {
                         model.renameSavedQuery(query, to: renameDraft)
                         renameTarget = nil
                     }
                     .keyboardShortcut(.defaultAction)
+                    .pointerCursor()
                     .disabled(renameDraft.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
             .padding(SexiQLSpace.xxl)
             .onAppear { renameDraft = query.name }
-        }
-        .fileImporter(
-            isPresented: $showingFileImporter,
-            allowedContentTypes: [.commaSeparatedText, .plainText],
-            allowsMultipleSelection: false
-        ) { result in
-            guard case .success(let urls) = result, let url = urls.first,
-                  let selectedID = model.selectedConnectionID else { return }
-            model.prepareImport(from: url, profileID: selectedID)
         }
     }
 
