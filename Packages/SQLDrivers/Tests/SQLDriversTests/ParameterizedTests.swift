@@ -1,4 +1,5 @@
 import XCTest
+import Synchronization
 @testable import SQLDrivers
 import SQLCore
 
@@ -214,6 +215,77 @@ final class EditableTableResolverTests: XCTestCase {
         let resolver = EditableTableResolver()
         let table = try await resolver.resolve(for: connection, columns: result.columns ?? [])
         XCTAssertEqual(table?.primaryKey, ["k1", "k2"])
+    }
+
+    func testPostgresPrimaryKeyLookupUsesSchemaFromTableIdentity() async throws {
+        let receivedSQL = Mutex<[String]>([])
+        let profile = ConnectionProfile(name: "pg", kind: .postgres, host: "h", username: "u")
+        let mock = MockConnection(profile: profile)
+        mock.setQueryHandler { sql in
+            receivedSQL.withLock { $0.append(sql) }
+            if sql.contains("pg_index") {
+                return QueryResult(
+                    columns: [SQLColumn(name: "attname", dataType: "name", ordinal: 0)],
+                    rows: [SQLRow(values: [.string("id")])]
+                )
+            }
+            if sql.contains("relname") {
+                return QueryResult(
+                    columns: [
+                        SQLColumn(name: "relname", dataType: "name", ordinal: 0),
+                        SQLColumn(name: "nspname", dataType: "name", ordinal: 1),
+                    ],
+                    rows: [SQLRow(values: [.string("users"), .string("app")])]
+                )
+            }
+            return QueryResult()
+        }
+
+        let columns = [
+            SQLColumn(name: "id", dataType: "int4", ordinal: 0, tableName: "users", tableOID: 16384, tableSchema: "app"),
+            SQLColumn(name: "name", dataType: "text", ordinal: 1, tableName: "users", tableOID: 16384, tableSchema: "app"),
+        ]
+        let table = try await EditableTableResolver().resolve(for: mock, columns: columns)
+
+        XCTAssertEqual(table, EditableTable(name: "users", columns: ["id", "name"], primaryKey: ["id"], schema: "app"))
+        let pkSQL = receivedSQL.withLock { $0 }.first { $0.contains("pg_index") }
+        XCTAssertNotNil(pkSQL)
+        XCTAssertTrue(pkSQL?.contains("n.nspname = $2") == true, "schema-qualified lookup expected")
+        XCTAssertFalse(pkSQL?.contains("current_schemas") == true)
+    }
+
+    func testPostgresPrimaryKeyLookupFallsBackToSearchPath() async throws {
+        let receivedSQL = Mutex<[String]>([])
+        let profile = ConnectionProfile(name: "pg", kind: .postgres, host: "h", username: "u")
+        let mock = MockConnection(profile: profile)
+        mock.setQueryHandler { sql in
+            receivedSQL.withLock { $0.append(sql) }
+            if sql.contains("pg_index") {
+                return QueryResult(
+                    columns: [SQLColumn(name: "attname", dataType: "name", ordinal: 0)],
+                    rows: [SQLRow(values: [.string("id")])]
+                )
+            }
+            if sql.contains("relname") {
+                return QueryResult(
+                    columns: [SQLColumn(name: "relname", dataType: "name", ordinal: 0)],
+                    rows: [SQLRow(values: [.string("users")])]
+                )
+            }
+            return QueryResult()
+        }
+
+        let columns = [
+            SQLColumn(name: "id", dataType: "int4", ordinal: 0, tableName: "users", tableOID: 16384),
+            SQLColumn(name: "name", dataType: "text", ordinal: 1, tableName: "users", tableOID: 16384),
+        ]
+        let table = try await EditableTableResolver().resolve(for: mock, columns: columns)
+
+        XCTAssertEqual(table, EditableTable(name: "users", columns: ["id", "name"], primaryKey: ["id"]))
+        let pkSQL = receivedSQL.withLock { $0 }.first { $0.contains("pg_index") }
+        XCTAssertNotNil(pkSQL)
+        XCTAssertTrue(pkSQL?.contains("current_schemas") == true, "search_path fallback expected")
+        XCTAssertFalse(pkSQL?.contains("n.nspname = $2") == true)
     }
 }
 
