@@ -48,14 +48,15 @@ enum PGRowCodec: Sendable {
     }
 
     static func parseCommandTag(_ payload: Data) -> String? {
-        let tag = String(decoding: payload, as: UTF8.self).trimmingCharacters(in: .newlines)
+        let tag = String(decoding: payload, as: UTF8.self)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\0").union(.whitespacesAndNewlines))
         return tag.isEmpty ? nil : tag
     }
 
     static func affectedRows(from tag: String?) -> Int? {
         guard let tag else { return nil }
         let parts = tag.split(separator: " ")
-        if let last = parts.last, let value = Int(last) {
+        if let last = parts.last, let value = Int(last.trimmingCharacters(in: .whitespacesAndNewlines)) {
             return value
         }
         return nil
