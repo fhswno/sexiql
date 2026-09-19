@@ -18,7 +18,7 @@ struct SidebarSavedView: View {
                         .frame(width: 22, height: 22)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.borderless).pointerCursor()
                 .help("Save current query")
             }
 
@@ -63,7 +63,7 @@ struct SidebarSavedView: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plain).pointerCursor()
 
             Menu {
                 Button("Open") { model.openSavedQuery(query) }
