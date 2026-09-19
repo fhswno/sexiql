@@ -29,10 +29,14 @@ public actor SQLiteConnection: DatabaseConnection {
         }
         let newHandle = SQLiteHandle()
         let path = profile.database
+        let readOnly = profile.readOnly
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             workQueue.async {
                 var db: OpaquePointer?
-                let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
+                let accessFlags = readOnly
+                    ? SQLITE_OPEN_READONLY
+                    : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE
+                let flags = accessFlags | SQLITE_OPEN_FULLMUTEX
                 let status = sqlite3_open_v2(path, &db, flags, nil)
                 if status == SQLITE_OK, let db {
                     newHandle.db = db
@@ -44,6 +48,7 @@ public actor SQLiteConnection: DatabaseConnection {
                     } else {
                         message = "sqlite3_open_v2 failed with status \(status)"
                     }
+                    sqlite3_close(db)
                     continuation.resume(throwing: SQLDriverError.sqlite(message: message))
                 }
             }
@@ -65,6 +70,7 @@ public actor SQLiteConnection: DatabaseConnection {
 
     public func execute(_ sql: String) async throws -> QueryResult {
         let handle = try requireHandle()
+        try enforceReadOnly(sql)
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<QueryResult, Error>) in
             workQueue.async {
                 continuation.resume(with: SQLiteExecutor(db: handle.db).run(sql))
@@ -74,6 +80,7 @@ public actor SQLiteConnection: DatabaseConnection {
 
     public func execute(_ sql: String, parameters: [SQLValue]) async throws -> QueryResult {
         let handle = try requireHandle()
+        try enforceReadOnly(sql)
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<QueryResult, Error>) in
             workQueue.async {
                 continuation.resume(with: SQLiteExecutor(db: handle.db).run(sql, parameters: parameters))
@@ -83,6 +90,7 @@ public actor SQLiteConnection: DatabaseConnection {
 
     public func stream(_ sql: String) async throws -> StreamedQuery {
         let handle = try requireHandle()
+        try enforceReadOnly(sql)
         let columns: [SQLColumn] = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[SQLColumn], Error>) in
             workQueue.async {
                 var stmt: OpaquePointer?
