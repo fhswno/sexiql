@@ -164,15 +164,28 @@ public struct EditableTableResolver: Sendable {
     public func resolve(for connection: any DatabaseConnection, columns: [SQLColumn]) async throws -> EditableTable? {
         let candidate = try await candidateTable(for: connection, columns: columns)
         guard let candidate else { return nil }
-        let schema = Self.singleSchema(from: columns)
-        let primaryKey = try await primaryKey(
-            for: connection,
-            kind: connection.profile.kind,
-            table: candidate,
-            schema: schema
-        )
-        guard !primaryKey.isEmpty else { return nil }
-        return EditableTable(name: candidate, columns: columns.map(\.name), primaryKey: primaryKey, schema: schema)
+        let schema: String?
+        let resolvedKeys: [String]
+        switch connection.profile.kind {
+        case .postgres:
+            schema = candidate.schema
+            resolvedKeys = try await primaryKey(
+                for: connection,
+                kind: .postgres,
+                table: candidate.name,
+                schema: candidate.schema
+            )
+        case .mysql, .sqlite, .redis:
+            schema = Self.singleSchema(from: columns)
+            resolvedKeys = try await primaryKey(
+                for: connection,
+                kind: connection.profile.kind,
+                table: candidate.name,
+                schema: schema
+            )
+        }
+        guard !resolvedKeys.isEmpty else { return nil }
+        return EditableTable(name: candidate.name, columns: columns.map(\.name), primaryKey: resolvedKeys, schema: schema)
     }
 
     static func singleTableName(from columns: [SQLColumn]) -> String? {
@@ -187,28 +200,38 @@ public struct EditableTableResolver: Sendable {
         return schema
     }
 
-    private func candidateTable(for connection: any DatabaseConnection, columns: [SQLColumn]) async throws -> String? {
+    private func candidateTable(for connection: any DatabaseConnection, columns: [SQLColumn]) async throws -> (name: String, schema: String?)? {
         switch connection.profile.kind {
         case .sqlite, .mysql:
-            return Self.singleTableName(from: columns)
+            return Self.singleTableName(from: columns).map { ($0, Self.singleSchema(from: columns)) }
         case .postgres:
             let oids = Set(columns.compactMap(\.tableOID))
             guard oids.count == 1, let oid = oids.first, oid != 0 else { return nil }
-            return try await resolveTableName(for: connection, oid: oid)
+            return try await resolveTableIdentity(for: connection, oid: oid)
         case .redis:
             return nil
         }
     }
 
-    private func resolveTableName(for connection: any DatabaseConnection, oid: UInt32) async throws -> String? {
+    private func resolveTableIdentity(for connection: any DatabaseConnection, oid: UInt32) async throws -> (name: String, schema: String?)? {
         let result = try await connection.execute(
-            "SELECT c.relname FROM pg_catalog.pg_class c WHERE c.oid = $1",
+            """
+            SELECT c.relname, n.nspname
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.oid = $1
+            """,
             parameters: [.int(Int64(oid))]
         )
-        if case .string(let name) = result.rows.first?.values.first {
-            return name
+        guard let row = result.rows.first else { return nil }
+        guard case .string(let name) = row.values.first else { return nil }
+        let schema: String?
+        if row.values.count > 1, case .string(let namespace) = row.values[1] {
+            schema = namespace
+        } else {
+            schema = nil
         }
-        return nil
+        return (name, schema)
     }
 
     private func primaryKey(
@@ -231,18 +254,44 @@ public struct EditableTableResolver: Sendable {
             }
             return keyColumns
         case .postgres:
-            let result = try await connection.execute(
-                """
+            let sql: String
+            let parameters: [SQLValue]
+            if let schema, !schema.isEmpty {
+                sql = """
                 SELECT a.attname
                 FROM pg_catalog.pg_index i
                 JOIN pg_catalog.pg_attribute a
                   ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-                WHERE i.indrelid = (SELECT c.oid FROM pg_catalog.pg_class c WHERE c.relname = $1)
+                WHERE i.indrelid = (
+                        SELECT c.oid
+                        FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                        WHERE c.relname = $1 AND n.nspname = $2
+                      )
                   AND i.indisprimary
                 ORDER BY array_position(i.indkey, a.attnum)
-                """,
-                parameters: [.string(table)]
-            )
+                """
+                parameters = [.string(table), .string(schema)]
+            } else {
+                sql = """
+                SELECT a.attname
+                FROM pg_catalog.pg_index i
+                JOIN pg_catalog.pg_attribute a
+                  ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                WHERE i.indrelid = (
+                        SELECT c.oid
+                        FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                        WHERE c.relname = $1 AND n.nspname = ANY(current_schemas(false))
+                        ORDER BY array_position(current_schemas(false), n.nspname)
+                        LIMIT 1
+                      )
+                  AND i.indisprimary
+                ORDER BY array_position(i.indkey, a.attnum)
+                """
+                parameters = [.string(table)]
+            }
+            let result = try await connection.execute(sql, parameters: parameters)
             return result.rows.compactMap { row in
                 if case .string(let name) = row.values.first { name } else { nil }
             }
