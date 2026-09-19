@@ -42,6 +42,7 @@ public enum PGWireError: Error, LocalizedError, Sendable, Equatable {
     case invalidMessage
     case unsupportedAuth
     case invalidUTF8
+    case excessiveIterations(Int)
 
     public var errorDescription: String? {
         switch self {
@@ -49,6 +50,7 @@ public enum PGWireError: Error, LocalizedError, Sendable, Equatable {
         case .invalidMessage: "Invalid Postgres message"
         case .unsupportedAuth: "Unsupported Postgres authentication method"
         case .invalidUTF8: "Invalid UTF-8 in Postgres message"
+        case .excessiveIterations(let count): "Server requested excessive SCRAM iterations (\(count))"
         }
     }
 }
