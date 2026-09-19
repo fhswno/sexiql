@@ -61,6 +61,36 @@ final class StreamingAdapterTests: XCTestCase {
         }
         XCTAssertEqual(error as? SQLDriverError, failure)
     }
+
+    func testMaxRowsCapStopsStoringAndMarksTruncation() async {
+        let rows = (1...25).map { SQLRow(values: [.int(Int64($0))]) }
+        let adapter = StreamingAdapter(batchSize: 5, maxRows: 10)
+
+        let result = await adapter.consume(makeStream(rows), initialColumns: makeColumns()) { _ in }
+        guard case .success(let model) = result else {
+            XCTFail("expected success")
+            return
+        }
+        XCTAssertEqual(model.rows.count, 10)
+        XCTAssertEqual(model.rows.last?.values.first, .int(10))
+        XCTAssertEqual(model.totalRowCount, 10)
+        XCTAssertTrue(model.isComplete)
+        XCTAssertTrue(model.isTruncated)
+    }
+
+    func testRowsUnderCapAreNotTruncated() async {
+        let rows = (1...10).map { SQLRow(values: [.int(Int64($0))]) }
+        let adapter = StreamingAdapter(batchSize: 4, maxRows: 10)
+
+        let result = await adapter.consume(makeStream(rows), initialColumns: makeColumns()) { _ in }
+        guard case .success(let model) = result else {
+            XCTFail("expected success")
+            return
+        }
+        XCTAssertEqual(model.rows.count, 10)
+        XCTAssertFalse(model.isTruncated)
+        XCTAssertEqual(model.totalRowCount, 10)
+    }
 }
 
 final class MutexCounter: @unchecked Sendable {
