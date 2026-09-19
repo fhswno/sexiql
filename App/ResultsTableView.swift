@@ -13,6 +13,7 @@ struct ResultsTableView: View {
     @Binding var sortAscending: Bool
     @Binding var selectedIDs: Set<Int>
     var isEditable: Bool = false
+    var readOnly: Bool = false
     var draftRowID: Int? = nil
     var onEditCell: ((Int, Int, SQLValue) -> Void)?
     var onDeleteRows: ((Set<Int>) -> Void)?
@@ -35,6 +36,8 @@ struct ResultsTableView: View {
     @State private var lastClickID: Int?
     @State private var lastClickColumn: Int?
     @State private var lastClickAt: Date = .distantPast
+    @State private var displayRowsCache: DisplayRowsCache?
+    @State private var idealWidthsCache: IdealWidthsCache?
 
     private var rowHeight: CGFloat { workspace.document.settings.compactGrid ? 22 : 28 }
     private var headerHeight: CGFloat { workspace.document.settings.compactGrid ? 26 : 32 }
@@ -46,8 +49,9 @@ struct ResultsTableView: View {
         var widths = model.columns.map { effectiveWidth(for: $0) }
         guard !widths.isEmpty else { return widths }
         let used = indexWidth + widths.reduce(0, +)
-        if available > used {
-            widths[widths.count - 1] += available - used
+        let slack = available - used
+        if slack > 0, let index = model.columns.lastIndex(where: { widthOverrides[$0.ordinal] == nil }) {
+            widths[index] += slack
         }
         return widths
     }
@@ -61,6 +65,17 @@ struct ResultsTableView: View {
     }
 
     private var displayRows: [ResultTableRow] {
+        if let displayRowsCache, displayRowsCache.key == displayRowsKey {
+            return displayRowsCache.rows
+        }
+        return buildDisplayRows()
+    }
+
+    private var displayRowsKey: String {
+        "\(filterText)|\(sortOrdinal ?? -1)|\(sortAscending)|\(model.rows.count)|\(model.editedCells.count)|\(model.isComplete)"
+    }
+
+    private func buildDisplayRows() -> [ResultTableRow] {
         let built = ResultDisplayRows.build(
             model: model,
             filterText: filterText,
@@ -72,11 +87,28 @@ struct ResultsTableView: View {
         }
     }
 
+    private func rebuildCaches() {
+        displayRowsCache = DisplayRowsCache(key: displayRowsKey, rows: buildDisplayRows())
+        var widths: [Int: CGFloat] = [:]
+        for column in model.columns {
+            widths[column.ordinal] = computeIdealWidth(for: column)
+        }
+        idealWidthsCache = IdealWidthsCache(key: idealWidthsKey, widths: widths)
+    }
+
+    private var idealWidthsKey: String {
+        "\(columnSignature)|\(min(model.rows.count, 60))"
+    }
+
     var body: some View {
         GeometryReader { geo in
             tableScroll(geo: geo)
                 .background(Color(nsColor: .textBackgroundColor))
                 .background(alignment: .topLeading) { copyFocusSink }
+                .onChange(of: model) { _, _ in rebuildCaches() }
+                .onChange(of: filterText) { _, _ in rebuildCaches() }
+                .onChange(of: sortOrdinal) { _, _ in rebuildCaches() }
+                .onChange(of: sortAscending) { _, _ in rebuildCaches() }
                 .onReceive(NotificationCenter.default.publisher(for: .sexiqlCopySelectedRows)) { _ in
                     copySelected(format: workspace.copySelectedRowsFormat)
                 }
@@ -128,6 +160,7 @@ struct ResultsTableView: View {
                 refreshCopyHandler()
             }
                 .onAppear {
+                    rebuildCaches()
                     pruneWidthOverrides()
                     if !selectedIDs.isEmpty {
                         selection = ResultRowSelection(selectedIDs: selectedIDs, anchorID: selection.anchorID)
@@ -289,7 +322,7 @@ struct ResultsTableView: View {
             .frame(width: width, height: headerHeight, alignment: align)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plain).pointerCursor()
         .frame(width: width, height: headerHeight)
         .overlay(alignment: .trailing) {
             columnRule(height: headerHeight - 8)
@@ -321,6 +354,12 @@ struct ResultsTableView: View {
                 }
             }
         .onHover { hovering in
+            if let session = resizeSession {
+                if hovering, session.ordinal == ordinal {
+                    NSCursor.resizeLeftRight.set()
+                }
+                return
+            }
             if hovering {
                 hoveringResizeOrdinal = ordinal
                 NSCursor.resizeLeftRight.set()
@@ -330,10 +369,11 @@ struct ResultsTableView: View {
             }
         }
         .gesture(
-            DragGesture(minimumDistance: 1, coordinateSpace: .local)
+            DragGesture(minimumDistance: 1, coordinateSpace: .global)
                 .onChanged { value in
                     if resizeSession?.ordinal != ordinal {
                         resizeSession = (ordinal, currentWidth)
+                        NSCursor.resizeLeftRight.set()
                     }
                     guard let session = resizeSession, session.ordinal == ordinal else { return }
                     let next = Self.clampedWidth(session.startWidth + value.translation.width)
@@ -341,6 +381,7 @@ struct ResultsTableView: View {
                 }
                 .onEnded { _ in
                     resizeSession = nil
+                    NSCursor.arrow.set()
                 }
         )
         .simultaneousGesture(
@@ -353,7 +394,7 @@ struct ResultsTableView: View {
         .accessibilityLabel("Resize column \(columnName)")
     }
 
-    // MARK: - Data rows
+    // MARK: - Data Rows
 
     private func dataRow(
         _ row: ResultTableRow,
@@ -523,7 +564,7 @@ struct ResultsTableView: View {
             }
     }
 
-    // MARK: - Selection / copy
+    // MARK: - Selection / Copy
 
     private func apply(_ next: ResultRowSelection, focus: Bool = true) {
         if selection != next {
@@ -574,8 +615,12 @@ struct ResultsTableView: View {
         if let column {
             inspectedCell = CellEditTarget(modelRow: id, column: column)
         }
-        if isDouble, isEditable, let column, flags.isEmpty {
-            beginEdit(row: id, column: column)
+        if isDouble, let column, flags.isEmpty {
+            if isEditable {
+                beginEdit(row: id, column: column)
+            } else if readOnly {
+                workspace.failEditing("Read-only connection — disable read-only to edit cells.")
+            }
         }
     }
 
@@ -744,7 +789,6 @@ struct ResultsTableView: View {
         editFieldFocused = false
     }
 
-    /// Same literal rules as the old AppKit grid editor.
     static func parsedValue(_ text: String) -> SQLValue {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return .string("") }
@@ -759,16 +803,20 @@ struct ResultsTableView: View {
         return .string(text)
     }
 
-    // MARK: - Sizing / sort
+    // MARK: - Sizing / Sort
 
     private func effectiveWidth(for column: GridColumn) -> CGFloat {
         if let override = widthOverrides[column.ordinal] {
             return Self.clampedWidth(override)
         }
-        return idealWidth(for: column)
+        if let idealWidthsCache, idealWidthsCache.key == idealWidthsKey,
+           let cached = idealWidthsCache.widths[column.ordinal] {
+            return cached
+        }
+        return computeIdealWidth(for: column)
     }
 
-    private func idealWidth(for column: GridColumn) -> CGFloat {
+    private func computeIdealWidth(for column: GridColumn) -> CGFloat {
         let nameW = CGFloat(column.name.count) * 7.6 + 20
         let typeW = column.dataType.isEmpty ? 0 : CGFloat(column.dataType.count) * 6.6 + 16
         var width = max(140, nameW + typeW)
@@ -825,6 +873,16 @@ struct ResultTableRow: Identifiable, Equatable {
         guard ordinal >= 0, ordinal < values.count else { return .null }
         return values[ordinal]
     }
+}
+
+struct DisplayRowsCache {
+    let key: String
+    let rows: [ResultTableRow]
+}
+
+struct IdealWidthsCache {
+    let key: String
+    let widths: [Int: CGFloat]
 }
 
 struct CellEditTarget: Equatable {
