@@ -24,7 +24,7 @@ struct OutsideClickMonitor: NSViewRepresentable {
     final class MonitorView: NSView {
         var enabled = false
         var onOutside: (() -> Void)?
-        private var monitor: Any?
+        nonisolated(unsafe) private var monitor: Any?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -43,7 +43,7 @@ struct OutsideClickMonitor: NSViewRepresentable {
             }
         }
 
-        func teardown() {
+        nonisolated func teardown() {
             if let monitor {
                 NSEvent.removeMonitor(monitor)
                 self.monitor = nil
