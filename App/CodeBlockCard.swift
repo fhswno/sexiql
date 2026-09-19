@@ -85,7 +85,7 @@ struct CodeBlockCard: View {
                 .frame(width: 24, height: 22)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plain).pointerCursor()
         .help(help)
         .accessibilityLabel(help)
     }
