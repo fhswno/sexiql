@@ -59,6 +59,7 @@ public struct SidebarModePicker<Mode: Hashable>: View {
                         }
                 }
                 .buttonStyle(.plain)
+                .pointerCursor()
                 .help(title)
                 .foregroundStyle(selection == mode ? Color.accentColor : Color.secondary)
             }
@@ -123,6 +124,7 @@ public struct SelectableRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointerCursor()
         .padding(.horizontal, 10)
         .padding(.vertical, SexiQLSpace.sm)
         .background {
