@@ -8,6 +8,8 @@ struct EditorAIComposerBar: View {
     @Environment(WorkspaceModel.self) private var model
     @State private var mentionIndex = 0
     @State private var caret: Int?
+    @State private var sendHover = false
+    @State private var closeHover = false
 
     private static let promptLimit = 8000
 
@@ -43,7 +45,7 @@ struct EditorAIComposerBar: View {
                     Button("Stop") {
                         model.cancelEditorAI()
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.bordered).pointerCursor()
                     .controlSize(.small)
                     .keyboardShortcut(.cancelAction)
                 } else {
@@ -78,19 +80,56 @@ struct EditorAIComposerBar: View {
                         }
                     }
                     .animation(.spring(response: 0.28, dampingFraction: 0.86), value: mentionActive)
-                    Button("Generate") {
-                        model.submitEditorAIGenerate()
+
+                    HStack(spacing: SexiQLSpace.sm) {
+                        Button {
+                            guard !model.editorAIPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                            model.submitEditorAIGenerate()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "paperplane.fill")
+                                    .font(.caption2)
+                                Text("Send")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(
+                                sendHover ? Color.accentColor.opacity(0.85) : Color.accentColor,
+                                in: Capsule(style: .continuous)
+                            )
+                            .contentShape(Capsule(style: .continuous))
+                            .opacity(model.editorAIPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
+                        }
+                        .buttonStyle(.plain)
+                        .pointerCursor()
+                        .onHover { sendHover = $0 }
+
+                        Button {
+                            model.dismissEditorAIComposer()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "xmark")
+                                    .font(.caption2)
+                                Text("Close")
+                                    .font(.caption.weight(.medium))
+                            }
+                            .foregroundStyle(closeHover ? SexiQLColors.failed : .secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(
+                                closeHover ? SexiQLColors.failed.opacity(0.15) : Color.secondary.opacity(0.12),
+                                in: Capsule(style: .continuous)
+                            )
+                            .contentShape(Capsule(style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .pointerCursor()
+                        .onHover { closeHover = $0 }
+                        .help("Close (Esc)")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .disabled(model.editorAIPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    Button {
-                        model.dismissEditorAIComposer()
-                    } label: {
-                        Image(systemName: "xmark")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Close (Esc)")
+                    .padding(.top, 3)
                 }
             }
             .padding(.horizontal, SexiQLSpace.lg)
