@@ -41,18 +41,22 @@ public enum RedisEdit: Sendable {
         let key = table.name
         switch kind {
         case "string":
-            return RedisCommand.line(["SET", key, string(newValue)])
+            guard let value = redisString(newValue) else { return nil }
+            return RedisCommand.line(["SET", key, value])
         case "hash":
             guard column == 1 || table.columns.indices.contains(column) && table.columns[column] == "value" else { return nil }
-            let field = string(primaryKeyValues.first)
-            return RedisCommand.line(["HSET", key, field, string(newValue)])
+            guard let field = redisString(primaryKeyValues.first),
+                  let value = redisString(newValue) else { return nil }
+            return RedisCommand.line(["HSET", key, field, value])
         case "list":
-            let index = string(primaryKeyValues.first)
-            return RedisCommand.line(["LSET", key, index, string(newValue)])
+            guard let index = redisString(primaryKeyValues.first),
+                  let value = redisString(newValue) else { return nil }
+            return RedisCommand.line(["LSET", key, index, value])
         case "zset":
             if table.columns.indices.contains(column), table.columns[column] == "score" || column == 1 {
-                let member = string(primaryKeyValues.first)
-                return RedisCommand.line(["ZADD", key, string(newValue), member])
+                guard let member = redisString(primaryKeyValues.first),
+                      let score = redisString(newValue) else { return nil }
+                return RedisCommand.line(["ZADD", key, score, member])
             }
             return nil
         default:
@@ -67,11 +71,14 @@ public enum RedisEdit: Sendable {
         case "string":
             return RedisCommand.line(["DEL", key])
         case "hash":
-            return RedisCommand.line(["HDEL", key, string(primaryKeyValues.first)])
+            guard let field = redisString(primaryKeyValues.first) else { return nil }
+            return RedisCommand.line(["HDEL", key, field])
         case "set":
-            return RedisCommand.line(["SREM", key, string(primaryKeyValues.first)])
+            guard let member = redisString(primaryKeyValues.first) else { return nil }
+            return RedisCommand.line(["SREM", key, member])
         case "zset":
-            return RedisCommand.line(["ZREM", key, string(primaryKeyValues.first)])
+            guard let member = redisString(primaryKeyValues.first) else { return nil }
+            return RedisCommand.line(["ZREM", key, member])
         default:
             return nil
         }
@@ -80,35 +87,40 @@ public enum RedisEdit: Sendable {
     public static func insertCommand(table: EditableTable, columns: [String], values: [SQLValue]) -> String? {
         let kind = redisType(table)
         let key = table.name
-        func value(named name: String) -> SQLValue {
+        func value(named name: String) -> String? {
             guard let index = columns.firstIndex(where: { $0.caseInsensitiveCompare(name) == .orderedSame }),
-                  values.indices.contains(index) else { return .null }
-            return values[index]
+                  values.indices.contains(index) else { return nil }
+            return redisString(values[index])
         }
         switch kind {
         case "string":
-            return RedisCommand.line(["SET", key, string(value(named: "value"))])
+            guard let value = value(named: "value") else { return nil }
+            return RedisCommand.line(["SET", key, value])
         case "hash":
-            return RedisCommand.line(["HSET", key, string(value(named: "field")), string(value(named: "value"))])
+            guard let field = value(named: "field"), let value = value(named: "value") else { return nil }
+            return RedisCommand.line(["HSET", key, field, value])
         case "list":
-            return RedisCommand.line(["RPUSH", key, string(value(named: "value"))])
+            guard let value = value(named: "value") else { return nil }
+            return RedisCommand.line(["RPUSH", key, value])
         case "set":
-            return RedisCommand.line(["SADD", key, string(value(named: "member"))])
+            guard let member = value(named: "member") else { return nil }
+            return RedisCommand.line(["SADD", key, member])
         case "zset":
-            return RedisCommand.line(["ZADD", key, string(value(named: "score")), string(value(named: "member"))])
+            guard let score = value(named: "score"), let member = value(named: "member") else { return nil }
+            return RedisCommand.line(["ZADD", key, score, member])
         default:
             return nil
         }
     }
 
-    private static func string(_ value: SQLValue?) -> String {
+    private static func redisString(_ value: SQLValue?) -> String? {
         switch value {
-        case .none, .null: ""
+        case .none, .null: nil
         case .string(let text): text
         case .int(let number): String(number)
         case .double(let number): String(number)
         case .bool(let flag): flag ? "1" : "0"
-        case .data(let data): String(data: data, encoding: .utf8) ?? ""
+        case .data(let data): String(data: data, encoding: .utf8)
         case .date(let date): ISO8601DateFormatter().string(from: date)
         }
     }
