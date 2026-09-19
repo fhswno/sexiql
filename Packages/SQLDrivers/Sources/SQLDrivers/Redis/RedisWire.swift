@@ -116,12 +116,19 @@ public enum RedisCommand: Sendable {
 }
 
 struct RedisDecoder: Sendable {
+    static let maximumBulkLength = 512 * 1024 * 1024
+    static let maximumArrayCount = 1_000_000
+    static let maximumBufferedBytes = maximumBulkLength + 1024 * 1024
+
     var data: Data
     var offset: Int = 0
 
     var remaining: Int { data.count - offset }
 
-    mutating func append(_ chunk: Data) {
+    mutating func append(_ chunk: Data) throws {
+        guard chunk.count <= Self.maximumBufferedBytes - data.count else {
+            throw RedisError.protocolError("Redis response is too large")
+        }
         data.append(chunk)
     }
 
@@ -161,6 +168,9 @@ struct RedisDecoder: Sendable {
                 throw RedisError.protocolError("Invalid Redis bulk length")
             }
             if length < 0 { return .bulk(nil) }
+            guard length <= Self.maximumBulkLength else {
+                throw RedisError.protocolError("Redis bulk value is too large")
+            }
             let bytes = try readBytes(length)
             try expectCRLF()
             return .bulk(bytes)
@@ -170,6 +180,9 @@ struct RedisDecoder: Sendable {
                 throw RedisError.protocolError("Invalid Redis array length")
             }
             if count < 0 { return .array(nil) }
+            guard count <= Self.maximumArrayCount else {
+                throw RedisError.protocolError("Redis array is too large")
+            }
             var items: [RedisReply] = []
             items.reserveCapacity(count)
             for _ in 0..<count {
@@ -195,7 +208,7 @@ struct RedisDecoder: Sendable {
     }
 
     private mutating func readBytes(_ count: Int) throws -> Data {
-        guard remaining >= count else { throw RedisError.protocolError("truncated") }
+        guard count >= 0, remaining >= count else { throw RedisError.protocolError("truncated") }
         let slice = data[(data.startIndex + offset)..<(data.startIndex + offset + count)]
         offset += count
         return Data(slice)
