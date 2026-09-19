@@ -41,9 +41,13 @@ public actor PostgresConnection: DatabaseConnection {
         do {
             try await performHandshake()
             connected = true
+            if profile.readOnly {
+                _ = try await execute("SET default_transaction_read_only = on")
+            }
         } catch {
             await transport.close()
             buffer.removeAll()
+            connected = false
             throw error
         }
     }
@@ -106,6 +110,7 @@ public actor PostgresConnection: DatabaseConnection {
 
     public func execute(_ sql: String) async throws -> QueryResult {
         try requireConnected()
+        try enforceReadOnly(sql)
         await beginQueryOperation()
         defer { endQueryOperation() }
         try await sendMessage(.query, PGQueryMessages.simpleQueryPayload(sql))
@@ -145,6 +150,7 @@ public actor PostgresConnection: DatabaseConnection {
 
     public func execute(_ sql: String, parameters: [SQLValue]) async throws -> QueryResult {
         try requireConnected()
+        try enforceReadOnly(sql)
         await beginQueryOperation()
         defer { endQueryOperation() }
         try await sendParameterizedQuery(sql, parameters: parameters)
@@ -184,6 +190,7 @@ public actor PostgresConnection: DatabaseConnection {
 
     public func stream(_ sql: String) async throws -> StreamedQuery {
         try requireConnected()
+        try enforceReadOnly(sql)
         await beginQueryOperation()
         var handedOff = false
         defer {
@@ -237,7 +244,7 @@ public actor PostgresConnection: DatabaseConnection {
                             throw error
                         case .readyForQuery:
                             continuation.finish()
-                            await self.endQueryOperation()
+                            self.endQueryOperation()
                             return
                         default:
                             try await self.failProtocol(type, context: "streaming")
@@ -245,7 +252,7 @@ public actor PostgresConnection: DatabaseConnection {
                     }
                 } catch {
                     continuation.finish(throwing: error)
-                    await self.endQueryOperation()
+                    self.endQueryOperation()
                 }
             }
         }
