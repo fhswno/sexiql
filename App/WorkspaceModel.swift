@@ -53,7 +53,9 @@ final class WorkspaceModel {
     var editableTable: EditableTable?
     var isResolvingEditable = false
     var editingMessage: String?
+    var pendingEditingMessageClear: DispatchWorkItem?
     var showingImportSheet = false
+    var showingImportFilePicker = false
     var importSession: ImportSession?
     var explainPlans: [UUID: ExplainNode] = [:]
     var explainErrors: [UUID: String] = [:]
@@ -101,6 +103,7 @@ final class WorkspaceModel {
     var addResultRowHandler: (() -> Void)?
     var deleteResultRowsHandler: (() -> Void)?
     var pendingDisconnect: ConnectionProfile?
+    var pendingDeleteProfile: ConnectionProfile?
     var pendingDeleteRows: (tabID: UUID, resultIndex: Int, rows: [Int])?
     private var didRestoreConnections = false
     var canCopySelectedRows: Bool { copySelectedRowsHandler != nil }
