@@ -64,7 +64,7 @@ struct AIPanelComposer: View {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title2)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.borderless).pointerCursor()
             .disabled(!canSend && !mentionActive)
             .help("Send (Return). Shift+Return for newline.")
         }
