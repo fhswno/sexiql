@@ -4,7 +4,7 @@ import SQLCore
 public actor MySQLConnection: DatabaseConnection {
     public let profile: ConnectionProfile
 
-    private let transport = MySQLTransport()
+    private let transport: any MySQLTransporting
     private var handshake: MySQLHandshake?
     private var capabilities: MySQLCapabilities = []
     private var packetSequence: UInt8 = 0
@@ -17,6 +17,12 @@ public actor MySQLConnection: DatabaseConnection {
 
     public init(profile: ConnectionProfile) {
         self.profile = profile
+        self.transport = MySQLTransport()
+    }
+
+    init(profile: ConnectionProfile, transport: any MySQLTransporting) {
+        self.profile = profile
+        self.transport = transport
     }
 
     public func isConnected() async -> Bool { connected }
@@ -69,6 +75,13 @@ public actor MySQLConnection: DatabaseConnection {
             try await finishAuthentication(password: password ?? "", initialPlugin: plugin, scramble: parsedHandshake.scramble)
             self.password = password
             connected = true
+            if profile.readOnly {
+                do {
+                    _ = try await execute("SET SESSION TRANSACTION READ ONLY")
+                } catch let error as MySQLWireError {
+                    guard case .serverError = error else { throw error }
+                }
+            }
         } catch {
             await hardClose()
             throw error
@@ -89,34 +102,42 @@ public actor MySQLConnection: DatabaseConnection {
             await hardClose()
             return
         }
-        let side = MySQLConnection(profile: profile)
+        var cancelProfile = profile
+        cancelProfile.readOnly = false
+        let side = MySQLConnection(profile: cancelProfile)
         do {
             try await side.connect(password: password)
             do {
                 _ = try await side.execute(MySQLCancel.killQuerySQL(connectionID: connectionID))
             } catch let error as MySQLWireError where MySQLCancel.isBenignKillError(error) {
-                // Query already finished.
             }
             try? await side.disconnect()
         } catch {
-            await hardClose()
         }
     }
 
     public func execute(_ sql: String, parameters: [SQLValue]) async throws -> QueryResult {
         try requireConnected()
+        try enforceReadOnly(sql)
         await beginQueryOperation()
         defer { endQueryOperation() }
         if parameters.isEmpty {
             try await sendCommand(MySQLPrepared.comQuery, payload: Data(sql.utf8))
             let start = try await readResultStart(binaryRows: false)
             if let affected = start.affectedRows {
+                try await drainMoreResults(after: start.statusFlags, binaryRows: false)
                 return QueryResult(affectedRowCount: affected)
             }
             var rows: [SQLRow] = []
-            while let row = try await readNextRow(columns: start.columns, binary: false) {
+            var statusFlags = start.statusFlags
+            while let row = try await readNextRow(
+                columns: start.columns,
+                binary: false,
+                statusFlags: &statusFlags
+            ) {
                 rows.append(row)
             }
+            try await drainMoreResults(after: statusFlags, binaryRows: false)
             return QueryResult(columns: start.columns, rows: rows)
         }
 
@@ -125,6 +146,7 @@ public actor MySQLConnection: DatabaseConnection {
 
     public func stream(_ sql: String) async throws -> StreamedQuery {
         try requireConnected()
+        try enforceReadOnly(sql)
         await beginQueryOperation()
         var handedOff = false
         defer {
@@ -135,10 +157,14 @@ public actor MySQLConnection: DatabaseConnection {
         try await sendCommand(MySQLPrepared.comQuery, payload: Data(sql.utf8))
         let start = try await readResultStart(binaryRows: false)
         guard let columns = start.columns else {
+            try await drainMoreResults(after: start.statusFlags, binaryRows: false)
             return StreamedQuery(columns: [], rows: RowStream { $0.finish() })
         }
         handedOff = true
-        return StreamedQuery(columns: columns, rows: makeRowStream(columns: columns))
+        return StreamedQuery(
+            columns: columns,
+            rows: makeRowStream(columns: columns, initialStatus: start.statusFlags)
+        )
     }
 
     public func serverVersion() async throws -> String? {
@@ -146,18 +172,24 @@ public actor MySQLConnection: DatabaseConnection {
         return handshake?.serverVersion
     }
 
-    private func makeRowStream(columns: [SQLColumn]) -> RowStream {
+    private func makeRowStream(columns: [SQLColumn], initialStatus: UInt16) -> RowStream {
         RowStream { continuation in
             Task {
                 do {
-                    while let row = try await self.readNextRow(columns: columns, binary: false) {
+                    var statusFlags = initialStatus
+                    while let row = try await self.readNextRow(
+                        columns: columns,
+                        binary: false,
+                        statusFlags: &statusFlags
+                    ) {
                         continuation.yield(row)
                     }
+                    try await self.drainMoreResults(after: statusFlags, binaryRows: false)
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
-                await self.endQueryOperation()
+                self.endQueryOperation()
             }
         }
     }
@@ -237,12 +269,17 @@ public actor MySQLConnection: DatabaseConnection {
         }
     }
 
-    // MARK: - Result sets
+    // MARK: - Result Sets
 
     private struct ResultStart {
         var columns: [SQLColumn]?
         var affectedRows: Int?
         var binaryRows: Bool
+        var statusFlags: UInt16
+    }
+
+    private var negotiatedDeprecateEOF: Bool {
+        capabilities.contains(.deprecateEOF)
     }
 
     private func readResultStart(binaryRows: Bool) async throws -> ResultStart {
@@ -253,11 +290,17 @@ public actor MySQLConnection: DatabaseConnection {
         }
         if first == 0x00 {
             let ok = try MySQLAuth.parseOK(packet.payload)
-            return ResultStart(columns: nil, affectedRows: Int(ok.affectedRows), binaryRows: binaryRows)
+            guard ok.affectedRows <= UInt64(Int.max) else { throw MySQLWireError.invalidPacket }
+            return ResultStart(
+                columns: nil,
+                affectedRows: Int(ok.affectedRows),
+                binaryRows: binaryRows,
+                statusFlags: ok.status
+            )
         }
 
         var reader = MySQLByteReader(data: packet.payload)
-        guard let count = try reader.readLengthEncodedInteger(), count <= UInt64(Int.max) else {
+        guard let count = try reader.readLengthEncodedInteger(), count <= UInt64(Self.maximumColumnCount) else {
             throw MySQLWireError.invalidPacket
         }
         var definitions: [MySQLColumnDefinition] = []
@@ -266,23 +309,66 @@ public actor MySQLConnection: DatabaseConnection {
             let definitionPacket = try await readPacket()
             definitions.append(try MySQLColumnDefinition.parse(definitionPacket.payload))
         }
-        _ = try await readPacket()
+        var statusFlags: UInt16 = 0
+        if !negotiatedDeprecateEOF {
+            let terminator = try await readPacket()
+            guard let flags = MySQLRowCodec.rowTerminatorStatus(terminator.payload, deprecateEOF: false) else {
+                throw MySQLWireError.invalidPacket
+            }
+            statusFlags = flags
+        }
         let columns = MySQLRowCodec.columns(from: definitions)
-        return ResultStart(columns: columns, affectedRows: nil, binaryRows: binaryRows)
+        return ResultStart(
+            columns: columns,
+            affectedRows: nil,
+            binaryRows: binaryRows,
+            statusFlags: statusFlags
+        )
     }
 
-    private func readNextRow(columns: [SQLColumn]?, binary: Bool) async throws -> SQLRow? {
+    private func readNextRow(
+        columns: [SQLColumn]?,
+        binary: Bool,
+        statusFlags: inout UInt16
+    ) async throws -> SQLRow? {
         guard let columns else { return nil }
+        let deprecateEOF = negotiatedDeprecateEOF
         let packet = try await readPacket()
         guard let first = packet.payload.first else { throw MySQLWireError.invalidPacket }
         if first == 0xff { throw try MySQLAuth.parseError(packet.payload) }
-        if MySQLRowCodec.isTerminator(packet.payload) { return nil }
+        if let flags = MySQLRowCodec.rowTerminatorStatus(packet.payload, deprecateEOF: deprecateEOF) {
+            statusFlags = flags
+            return nil
+        }
         return try binary
             ? MySQLRowCodec.parseBinaryRow(packet.payload, columns: columns)
             : MySQLRowCodec.parseTextRow(packet.payload, columns: columns)
     }
 
-    // MARK: - Prepared statements
+    private func drainMoreResults(after initialStatus: UInt16, binaryRows: Bool) async throws {
+        var statusFlags = initialStatus
+        var resultCount = 0
+        while statusFlags & MySQLServerStatus.moreResults != 0 {
+            resultCount += 1
+            guard resultCount <= Self.maximumResultSets else {
+                throw MySQLWireError.protocolError("Too many MySQL result sets")
+            }
+            let next = try await readResultStart(binaryRows: binaryRows)
+            guard let columns = next.columns else {
+                statusFlags = next.statusFlags
+                continue
+            }
+            var finalStatus = next.statusFlags
+            while try await readNextRow(
+                columns: columns,
+                binary: binaryRows,
+                statusFlags: &finalStatus
+            ) != nil {}
+            statusFlags = finalStatus
+        }
+    }
+
+    // MARK: - Prepared Statements
 
     private func executePrepared(_ sql: String, parameters: [SQLValue]) async throws -> QueryResult {
         try await sendCommand(MySQLPrepared.comStmtPrepare, payload: Data(sql.utf8))
@@ -292,14 +378,14 @@ public actor MySQLConnection: DatabaseConnection {
         let statementID = try reader.readUInt32()
         let columnCount = Int(try reader.readUInt16())
         let parameterCount = Int(try reader.readUInt16())
+        let deprecateEOF = negotiatedDeprecateEOF
         if parameterCount > 0 {
-            _ = try await readPacket()
             for _ in 0..<parameterCount { _ = try await readPacket() }
-            _ = try await readPacket()
+            if !deprecateEOF { _ = try await readPacket() }
         }
         if columnCount > 0 {
             for _ in 0..<columnCount { _ = try await readPacket() }
-            _ = try await readPacket()
+            if !deprecateEOF { _ = try await readPacket() }
         }
 
         try await sendCommand(
@@ -308,13 +394,20 @@ public actor MySQLConnection: DatabaseConnection {
         )
         let start = try await readResultStart(binaryRows: true)
         if let affected = start.affectedRows {
+            try await drainMoreResults(after: start.statusFlags, binaryRows: true)
             try? await closePrepared(statementID)
             return QueryResult(affectedRowCount: affected)
         }
         var rows: [SQLRow] = []
-        while let row = try await readNextRow(columns: start.columns, binary: true) {
+        var statusFlags = start.statusFlags
+        while let row = try await readNextRow(
+            columns: start.columns,
+            binary: true,
+            statusFlags: &statusFlags
+        ) {
             rows.append(row)
         }
+        try await drainMoreResults(after: statusFlags, binaryRows: true)
         try? await closePrepared(statementID)
         return QueryResult(columns: start.columns, rows: rows)
     }
@@ -323,7 +416,7 @@ public actor MySQLConnection: DatabaseConnection {
         try await sendCommand(MySQLPrepared.comStmtClose, payload: MySQLWire.uint32(statementID))
     }
 
-    // MARK: - Packet helpers
+    // MARK: - Packet Helpers
 
     private func requireConnected() throws {
         guard connected else { throw SQLDriverError.connectionFailed(message: "Not connected") }
@@ -346,4 +439,7 @@ public actor MySQLConnection: DatabaseConnection {
         packetSequence = packet.sequence &+ 1
         return packet
     }
+
+    private static let maximumColumnCount = 4096
+    private static let maximumResultSets = 1024
 }
