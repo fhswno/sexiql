@@ -20,7 +20,7 @@ struct SexiQLToolbar: ToolbarContent {
                 } label: {
                     Label("Stop", systemImage: "stop.fill")
                 }
-                .help("Stop running query (⌘⌥.)")
+                .help("Stop running query (⌘.)").pointerCursor()
             } else {
                 Button {
                     if let tabID = model.selectedTabID {
@@ -29,7 +29,7 @@ struct SexiQLToolbar: ToolbarContent {
                 } label: {
                     Label("Run", systemImage: "play.fill")
                 }
-                .help("Run Query (⌘⏎)")
+                .help("Run Query (⌘⏎)").pointerCursor()
                 .disabled(model.selectedTabID == nil)
             }
         }
@@ -42,7 +42,7 @@ struct SexiQLToolbar: ToolbarContent {
             } label: {
                 Label("Explain Plan", systemImage: "point.3.connected.trianglepath.dotted")
             }
-            .help("Show engine query plan (⌘E). Uses selection when text is highlighted.")
+            .help("Show engine query plan (⌘E). Uses selection when text is highlighted.").pointerCursor()
             .disabled(model.selectedTabID == nil || (model.selectedTabID.map { model.explainingTabs.contains($0) } ?? true))
         }
 
@@ -54,7 +54,7 @@ struct SexiQLToolbar: ToolbarContent {
             } label: {
                 Label("Explain with AI", systemImage: "sparkles")
             }
-            .help("Explain SQL with local Ollama (⌘⇧E). Opens AI panel. Uses selection when highlighted.")
+            .help("Explain SQL with local Ollama (⌘⇧E). Opens AI panel. Uses selection when highlighted.").pointerCursor()
             .disabled(model.selectedTabID == nil)
         }
 
@@ -70,7 +70,7 @@ struct SexiQLToolbar: ToolbarContent {
             } label: {
                 Label("Clear Results", systemImage: "trash")
             }
-            .help("Clear Results (⌘⇧K)")
+            .help("Clear Results (⌘⇧K)").pointerCursor()
             .disabled(model.selectedTabID == nil)
         }
 
@@ -83,7 +83,7 @@ struct SexiQLToolbar: ToolbarContent {
                     systemImage: model.resultsCollapsed ? "rectangle.bottomhalf.inset.filled" : "rectangle.bottomhalf.filled"
                 )
             }
-            .help("Show/Hide Results Pane (⌘⇧Y)")
+            .help("Show/Hide Results Pane (⌘⇧Y)").pointerCursor()
         }
 
         ToolbarItem(placement: .primaryAction) {
@@ -95,7 +95,7 @@ struct SexiQLToolbar: ToolbarContent {
                     systemImage: "sidebar.right"
                 )
             }
-            .help(model.aiPanelVisible ? "Hide AI Panel (⌘⌥0)" : "Show AI Panel (⌘⌥0)")
+            .help(model.aiPanelVisible ? "Hide AI Panel (⌘⌥0)" : "Show AI Panel (⌘⌥0)").pointerCursor()
         }
 
         ToolbarItem(placement: .primaryAction) {
@@ -107,7 +107,7 @@ struct SexiQLToolbar: ToolbarContent {
                     systemImage: model.focusMode ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right"
                 )
             }
-            .help(model.focusMode ? "Exit Focus Mode (⌘.)" : "Focus Mode (⌘.)")
+            .help(model.focusMode ? "Exit Focus Mode (⌘.)" : "Focus Mode (⌘.)").pointerCursor()
         }
     }
 
