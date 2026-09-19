@@ -92,8 +92,15 @@ extension WorkspaceModel {
             session.errorMessage = "Map at least one column."
             return
         }
+        if Task.isCancelled {
+            session.errorMessage = "Import cancelled; no rows were committed."
+            return
+        }
         session.isRunning = true
         defer { session.isRunning = false }
+        session.inserted = 0
+        session.failed = 0
+        session.errorMessage = nil
         let kind = document.connections.first(where: { $0.id == profileID })?.kind ?? .sqlite
         let table = SchemaBrowser.quoteIdentifier(session.targetTable, kind: kind)
         let columns = mapped.keys
@@ -107,11 +114,13 @@ extension WorkspaceModel {
         }
         let sql = "INSERT INTO \(table) (\(columns)) VALUES (\(placeholders))"
         let csvColumnOrder = session.csvColumns
+        let rows = session.csvRows
 
         do {
             _ = try await connection.execute("BEGIN")
             do {
-                for row in session.csvRows {
+                for (index, row) in rows.enumerated() {
+                    try Task.checkCancellation()
                     var parameters: [SQLValue] = []
                     parameters.reserveCapacity(mapped.count)
                     for tableColumn in mapped.keys {
@@ -125,18 +134,35 @@ extension WorkspaceModel {
                     }
                     do {
                         _ = try await connection.execute(sql, parameters: parameters)
-                        session.inserted += 1
                     } catch {
-                        session.failed += 1
+                        session.failed = 1
+                        throw ImportRowFailure(rowNumber: index + 1, message: error.localizedDescription)
                     }
                 }
                 _ = try await connection.execute("COMMIT")
+                session.inserted = rows.count
             } catch {
                 _ = try? await connection.execute("ROLLBACK")
                 throw error
             }
+        } catch is CancellationError {
+            session.inserted = 0
+            session.errorMessage = "Import cancelled; no rows were committed."
+        } catch let failure as ImportRowFailure {
+            session.inserted = 0
+            session.errorMessage = "Import rolled back. \(failure.localizedDescription)"
         } catch {
+            session.inserted = 0
             session.errorMessage = "Import failed: \(error.localizedDescription)"
         }
+    }
+}
+
+private struct ImportRowFailure: Error, LocalizedError, Sendable {
+    let rowNumber: Int
+    let message: String
+
+    var errorDescription: String? {
+        "Row \(rowNumber) failed: \(message)"
     }
 }
