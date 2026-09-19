@@ -94,14 +94,14 @@ final class TitlebarNavigationView: NSView {
 
     private let stack = NSStackView()
     private let sidebarEffect = NSVisualEffectView()
-    private let sidebarButton = NSButton()
+    private let sidebarButton = PointerCursorButton()
     private let pillEffect = NSVisualEffectView()
-    private let pillButton = NSButton()
+    private let pillButton = PointerCursorButton()
     private let statusDot = NSView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let chevron = NSImageView()
     private let dbEffect = NSVisualEffectView()
-    private let dbButton = NSButton()
+    private let dbButton = PointerCursorButton()
     private let dbLabel = NSTextField(labelWithString: "")
     private let dbChevron = NSImageView()
     private var items: [ConnectionItem] = []
@@ -379,5 +379,11 @@ final class TitlebarNavigationView: NSView {
     @objc private func pickDatabase(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
         onSelectDatabase?(name)
+    }
+}
+
+private final class PointerCursorButton: NSButton {
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
     }
 }
