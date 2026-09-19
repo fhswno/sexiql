@@ -8,7 +8,11 @@ struct EditorAreaView: View {
     @State private var renamingTabID: UUID?
     @State private var renameDraft = ""
     @State private var draggingTabID: UUID?
+    @State private var resultsPaneHeight: CGFloat = SexiQLLayout.resultsIdealHeight
+    @State private var resultsPaneDragStart: CGFloat?
     @FocusState private var renameFieldFocused: Bool
+
+    private let resultsDividerHeight: CGFloat = 9
 
     var body: some View {
         VStack(spacing: 0) {
@@ -45,8 +49,9 @@ struct EditorAreaView: View {
             let selected = model.selectedTabID
             let showResults = selected.map { model.showsResultsPane(for: $0) } ?? false
 
-            VSplitView {
-                TabEditorHostRepresentable(
+            GeometryReader { geo in
+                VStack(spacing: 0) {
+                    TabEditorHostRepresentable(
                     openTabIDs: openIDs,
                     selectedTabID: selected,
                     texts: model.tabTexts,
@@ -105,16 +110,65 @@ struct EditorAreaView: View {
                         }
                     }
                 )
-                .frame(minHeight: SexiQLLayout.editorMinHeight)
-                .layoutPriority(1)
+                .frame(minHeight: SexiQLLayout.editorMinHeight, maxHeight: .infinity)
 
                 if let selected, showResults {
+                    resultsSplitDivider(availableHeight: geo.size.height)
                     ResultsPaneView(tabID: selected)
-                        .frame(minHeight: SexiQLLayout.resultsMinHeight)
+                        .frame(height: clampedResultsHeight(availableHeight: geo.size.height))
                 }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background(.windowBackground)
         }
+    }
+
+    private func clampedResultsHeight(availableHeight: CGFloat) -> CGFloat {
+        let maxAllowed = max(
+            SexiQLLayout.resultsMinHeight,
+            availableHeight - SexiQLLayout.editorMinHeight - resultsDividerHeight
+        )
+        return min(max(resultsPaneHeight, SexiQLLayout.resultsMinHeight), maxAllowed)
+    }
+
+    private func resultsSplitDivider(availableHeight: CGFloat) -> some View {
+        ZStack {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor).opacity(0.5))
+                .frame(height: 1)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: resultsDividerHeight)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            if hovering {
+                NSCursor.resizeUpDown.set()
+            } else {
+                NSCursor.arrow.set()
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { value in
+                    if resultsPaneDragStart == nil {
+                        resultsPaneDragStart = resultsPaneHeight
+                    }
+                    guard let start = resultsPaneDragStart else { return }
+                    let maxAllowed = max(
+                        SexiQLLayout.resultsMinHeight,
+                        availableHeight - SexiQLLayout.editorMinHeight - resultsDividerHeight
+                    )
+                    resultsPaneHeight = min(
+                        max(start - value.translation.height, SexiQLLayout.resultsMinHeight),
+                        maxAllowed
+                    )
+                }
+                .onEnded { _ in
+                    resultsPaneDragStart = nil
+                }
+        )
+        .accessibilityLabel("Resize results pane")
     }
 
     private var tabBar: some View {
@@ -165,7 +219,7 @@ struct EditorAreaView: View {
             } label: {
                 Image(systemName: "plus")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.borderless).pointerCursor()
             .padding(.trailing, SexiQLLayout.panelChromeHorizontal)
             .help("New Query Tab (⌘T)")
         }
@@ -198,7 +252,7 @@ struct EditorAreaView: View {
                         .frame(maxWidth: SexiQLLayout.tabMaxWidth, alignment: .leading)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plain).pointerCursor()
                 .simultaneousGesture(
                     TapGesture(count: 2).onEnded {
                         beginRename(tab.id)
@@ -213,7 +267,7 @@ struct EditorAreaView: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.borderless).pointerCursor()
             .help("Close Tab")
         }
         .padding(.horizontal, 10)
