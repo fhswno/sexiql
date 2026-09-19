@@ -26,6 +26,12 @@ public extension DatabaseConnection {
     func execute(_ sql: String) async throws -> QueryResult {
         try await execute(sql, parameters: [])
     }
+
+    func enforceReadOnly(_ sql: String) throws {
+        guard profile.readOnly,
+              StatementWriteGuard.isWrite(sql, kind: profile.kind) else { return }
+        throw SQLDriverError.readOnlyViolation
+    }
 }
 
 public struct ConnectionFactory: Sendable {
