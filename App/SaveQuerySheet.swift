@@ -31,10 +31,12 @@ struct SaveQuerySheet: View {
                     model.pendingSaveSQL = ""
                 }
                 .keyboardShortcut(.cancelAction)
+                .pointerCursor()
                 Button("Save") {
                     model.saveQuery(name: name)
                 }
                 .keyboardShortcut(.defaultAction)
+                .pointerCursor()
                 .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
