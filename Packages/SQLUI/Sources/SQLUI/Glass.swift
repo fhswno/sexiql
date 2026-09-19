@@ -72,6 +72,7 @@ public struct EmptyStateView: View {
                 Button(actionTitle, action: action)
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
+                    .pointerCursor()
                     .padding(.top, SexiQLSpace.xs)
             }
         }
