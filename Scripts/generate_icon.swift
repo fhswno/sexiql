@@ -195,14 +195,27 @@ func writePNG(_ image: NSImage, to url: URL) throws {
     try png.write(to: url, options: .atomic)
 }
 
-let base = URL(fileURLWithPath: #filePath)
+let repositoryRoot = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()
     .deletingLastPathComponent()
-    .appendingPathComponent("App/Assets.xcassets/AppIcon.appiconset")
+let outputDirectory: URL
+if let argument = CommandLine.arguments.dropFirst().first {
+    if argument == "--update-assets" {
+        outputDirectory = repositoryRoot.appendingPathComponent("App/Assets.xcassets/AppIcon.appiconset")
+    } else if argument.hasPrefix("--") {
+        fputs("error: unknown option: \(argument)\n", stderr)
+        fputs("usage: generate_icon.swift [--update-assets | <output-directory>]\n", stderr)
+        exit(2)
+    } else {
+        outputDirectory = URL(fileURLWithPath: argument, isDirectory: true)
+    }
+} else {
+    outputDirectory = repositoryRoot.appendingPathComponent("build/generated-icons", isDirectory: true)
+}
 
 do {
-    try writePNG(renderIcon(theme: .dark), to: base.appendingPathComponent("AppIcon.png"))
-    try writePNG(renderIcon(theme: .light), to: base.appendingPathComponent("AppIcon-light.png"))
+    try writePNG(renderIcon(theme: .dark), to: outputDirectory.appendingPathComponent("AppIcon.png"))
+    try writePNG(renderIcon(theme: .light), to: outputDirectory.appendingPathComponent("AppIcon-light.png"))
     print("Wrote dark + light icons")
 } catch {
     fputs("error: \(error)\n", stderr)
