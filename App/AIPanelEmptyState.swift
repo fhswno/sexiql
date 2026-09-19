@@ -22,11 +22,11 @@ struct AIPanelEmptyState: View {
                 .frame(maxWidth: 260)
             if canExplain {
                 Button("Explain current SQL", action: onExplain)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.borderedProminent).pointerCursor()
                     .controlSize(.regular)
             }
             Button("AI settings…", action: onOpenSettings)
-                .buttonStyle(.borderless)
+                .buttonStyle(.borderless).pointerCursor()
                 .font(SexiQLType.rowSubtitle)
             Spacer(minLength: 0)
         }
