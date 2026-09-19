@@ -16,6 +16,7 @@ struct ResultsPaneView: View {
     @State private var inspectedCell: CellEditTarget?
     @State private var requestedEdit: CellEditTarget?
     @State private var copyFeedback: String?
+    @State private var editingErrorCopied = false
 
     private var tabIsReadOnly: Bool {
         let profileID = model.document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID
@@ -65,58 +66,160 @@ struct ResultsPaneView: View {
 
     private func resultTabs(_ results: [StatementResult]) -> some View {
         VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: SexiQLSpace.xs) {
-                    ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
-                        Button {
-                            model.selectedResultIndex[tabID] = index
-                        } label: {
-                            HStack(spacing: SexiQLSpace.sm) {
-                                StatusDot(color: statusColor(result.status), size: 7)
-                                Text(statementLabel(result.label))
-                                    .font(SexiQLType.rowSubtitle)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: 240, alignment: .leading)
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background {
-                                if (model.selectedResultIndex[tabID] ?? 0) == index {
-                                    RoundedRectangle(cornerRadius: SexiQLRadius.sm, style: .continuous)
-                                        .fill(SexiQLColors.selectionFillStrong)
+            HStack(spacing: 0) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: SexiQLSpace.xs) {
+                        ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
+                            Button {
+                                model.selectedResultIndex[tabID] = index
+                            } label: {
+                                HStack(spacing: SexiQLSpace.sm) {
+                                    StatusDot(color: statusColor(result.status), size: 7)
+                                    Text(statementLabel(result.label))
+                                        .font(SexiQLType.rowSubtitle)
+                                        .lineLimit(1)
+                                        .frame(maxWidth: 240, alignment: .leading)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background {
+                                    if (model.selectedResultIndex[tabID] ?? 0) == index {
+                                        RoundedRectangle(cornerRadius: SexiQLRadius.sm, style: .continuous)
+                                            .fill(SexiQLColors.selectionFillStrong)
+                                    }
                                 }
                             }
-                        }
-                        .buttonStyle(.plain)
-                        .help(result.label)
-                        .contextMenu {
-                            if result.status == .failed {
-                                Button("Fix with AI") {
-                                    model.fixSQLWithAI(
-                                        tabID: tabID,
-                                        sql: result.label,
-                                        error: result.message ?? "Query failed"
-                                    )
-                                }
-                                Button("Ask in chat") {
-                                    model.askAboutFailedSQL(
-                                        tabID: tabID,
-                                        sql: result.label,
-                                        error: result.message ?? "Query failed"
-                                    )
+                            .buttonStyle(.plain).pointerCursor()
+                            .help(result.label)
+                            .contextMenu {
+                                if result.status == .failed {
+                                    Button("Fix with AI") {
+                                        model.fixSQLWithAI(
+                                            tabID: tabID,
+                                            sql: result.label,
+                                            error: result.message ?? "Query failed"
+                                        )
+                                    }
+                                    Button("Ask in chat") {
+                                        model.askAboutFailedSQL(
+                                            tabID: tabID,
+                                            sql: result.label,
+                                            error: result.message ?? "Query failed"
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
+                    .padding(.vertical, SexiQLSpace.sm)
                 }
-                .padding(.horizontal, SexiQLSpace.md)
-                .padding(.vertical, SexiQLSpace.sm)
+
+                if let statusResult = selectedStatusResult(results) {
+                    selectedStatusCapsule(statusResult)
+                        .padding(.trailing, SexiQLSpace.md)
+                }
+
+                if let editingFailure = model.editingMessage {
+                    HStack(spacing: 6) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                            Text(editingFailure)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                        }
+                        .font(SexiQLType.rowSubtitle)
+                        .foregroundStyle(SexiQLColors.failed)
+                        .frame(maxWidth: 360, alignment: .leading)
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(editingFailure, forType: .string)
+                            editingErrorCopied = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                editingErrorCopied = false
+                            }
+                        } label: {
+                            Image(systemName: editingErrorCopied ? "checkmark" : "doc.on.doc")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(editingErrorCopied ? SexiQLColors.connected : SexiQLColors.failed.opacity(0.8))
+                                .frame(width: 20, height: 20)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .pointerCursor()
+                        .help("Copy error")
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(SexiQLColors.failed.opacity(0.12), in: Capsule(style: .continuous))
+                    .padding(.trailing, SexiQLSpace.md)
+                }
             }
             .background(Color(nsColor: .controlBackgroundColor))
 
             Rectangle()
                 .fill(Color(nsColor: .separatorColor).opacity(0.45))
                 .frame(height: 1)
+        }
+    }
+
+    private func selectedStatusResult(_ results: [StatementResult]) -> StatementResult? {
+        let index = min(model.selectedResultIndex[tabID] ?? 0, results.count - 1)
+        guard results.indices.contains(index) else { return nil }
+        let result = results[index]
+        guard result.status == .streaming || result.status == .cancelled else { return nil }
+        return result
+    }
+
+    private func runningTimeLabel(since start: Date, now: Date) -> String {
+        let interval = max(0, now.timeIntervalSince(start))
+        if interval < 60 {
+            return String(format: "%.1fs", interval)
+        }
+        return String(format: "%dm %02ds", Int(interval) / 60, Int(interval) % 60)
+    }
+
+    @ViewBuilder
+    private func selectedStatusCapsule(_ result: StatementResult) -> some View {
+        switch result.status {
+        case .streaming:
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.mini)
+                TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
+                    HStack(spacing: 6) {
+                        Text("Streaming \(result.model.rows.count) rows…")
+                            .font(SexiQLType.rowSubtitle)
+                            .foregroundStyle(.secondary)
+                        if let startedAt = result.startedAt {
+                            Text(runningTimeLabel(since: startedAt, now: timeline.date))
+                                .font(SexiQLType.rowSubtitle.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                Button {
+                    model.cancelRun(tabID)
+                } label: {
+                    Label("Stop", systemImage: "stop.fill")
+                        .font(.caption.weight(.medium))
+                }
+                .buttonStyle(.bordered).pointerCursor()
+                .controlSize(.small)
+            }
+        case .cancelled:
+            HStack(spacing: 6) {
+                Image(systemName: "stop.circle")
+                Text(result.message ?? "Cancelled")
+                    .lineLimit(1)
+            }
+            .font(SexiQLType.rowSubtitle)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.primary.opacity(0.06), in: Capsule(style: .continuous))
+            .help(result.label)
+        default:
+            EmptyView()
         }
     }
 
@@ -144,10 +247,10 @@ struct ResultsPaneView: View {
             case .pending:
                 ProgressView("Queued…").frame(maxWidth: .infinity, maxHeight: .infinity)
             case .running:
-                waitingResult("Running…")
+                waitingResult("Running…", startedAt: result.startedAt)
             case .streaming:
                 if result.model.columns.isEmpty {
-                    waitingResult("Streaming \(result.model.rows.count) rows…")
+                    waitingResult("Streaming \(result.model.rows.count) rows…", startedAt: result.startedAt)
                 } else {
                     populatedResult(result, index: index)
                 }
@@ -190,52 +293,33 @@ struct ResultsPaneView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func waitingResult(_ title: String) -> some View {
+    private func waitingResult(_ title: String, startedAt: Date?) -> some View {
         VStack(spacing: SexiQLSpace.lg) {
             ProgressView()
-            Text(title)
-                .font(SexiQLType.rowSubtitle)
-                .foregroundStyle(.secondary)
-            Button("Stop") {
-                model.cancelRun(tabID)
+            TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(SexiQLType.rowSubtitle)
+                        .foregroundStyle(.secondary)
+                    if let startedAt {
+                        Text(runningTimeLabel(since: startedAt, now: timeline.date))
+                            .font(SexiQLType.rowSubtitle.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
-            .buttonStyle(.bordered)
+            Button {
+                model.cancelRun(tabID)
+            } label: {
+                Label("Stop", systemImage: "stop.fill")
+            }
+            .buttonStyle(.bordered).pointerCursor()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder
     private func populatedResult(_ result: StatementResult, index: Int) -> some View {
-        if result.status == .cancelled, let message = result.message {
-            HStack(spacing: SexiQLSpace.sm) {
-                Image(systemName: "stop.circle")
-                    .foregroundStyle(.secondary)
-                Text(message)
-                    .font(SexiQLType.rowSubtitle)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, SexiQLSpace.lg)
-            .padding(.vertical, SexiQLSpace.sm)
-            .background(Color.primary.opacity(0.04))
-        }
-        if result.status == .streaming {
-            HStack(spacing: SexiQLSpace.sm) {
-                ProgressView()
-                    .controlSize(.mini)
-                Text("Streaming \(result.model.rows.count) rows…")
-                    .font(SexiQLType.rowSubtitle)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                Button("Stop") {
-                    model.cancelRun(tabID)
-                }
-                .buttonStyle(.borderless)
-            }
-            .padding(.horizontal, SexiQLSpace.lg)
-            .padding(.vertical, SexiQLSpace.sm)
-            .background(Color.primary.opacity(0.04))
-        }
         resultToolbar(result)
         ResultsTableView(
             model: result.model,
@@ -244,6 +328,7 @@ struct ResultsPaneView: View {
             sortAscending: $sortAscending,
             selectedIDs: $selectedRowIDs,
             isEditable: result.editableTable != nil && result.status == .complete && !tabIsReadOnly,
+            readOnly: tabIsReadOnly,
             draftRowID: result.draftRowIndex,
             onEditCell: { row, column, value in
                 model.handleCellEdit(
@@ -302,7 +387,7 @@ struct ResultsPaneView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.borderless).pointerCursor()
                     .disabled(tabIsReadOnly || model.isProfileBusy(model.document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID))
                     .help(tabIsReadOnly ? "Connection is read-only" : "Add row")
 
@@ -315,7 +400,7 @@ struct ResultsPaneView: View {
                     } label: {
                         Image(systemName: "trash")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.borderless).pointerCursor()
                     .disabled(tabIsReadOnly || selectedRowIDs.isEmpty || model.isProfileBusy(model.document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID))
                     .help(selectedRowIDs.count > 1 ? "Delete \(selectedRowIDs.count) rows" : "Delete row")
 
@@ -324,7 +409,7 @@ struct ResultsPaneView: View {
                     } label: {
                         Image(systemName: "arrow.uturn.backward")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.borderless).pointerCursor()
                     .disabled(result.undoStack.isEmpty)
                     .help("Undo edit")
 
@@ -333,7 +418,7 @@ struct ResultsPaneView: View {
                     } label: {
                         Image(systemName: "arrow.uturn.forward")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.borderless).pointerCursor()
                     .disabled(result.redoStack.isEmpty)
                     .help("Redo edit")
                 }
@@ -526,6 +611,11 @@ struct ResultsPaneView: View {
                     Text("limited to \(limit)")
                 }
 
+                if result.model.isTruncated {
+                    statusDot()
+                    Text("truncated at \(StreamingAdapter.defaultMaxRows.formatted())")
+                }
+
                 Spacer(minLength: SexiQLSpace.md)
 
                 if let message = result.message, !message.isEmpty {
@@ -558,7 +648,7 @@ struct ResultsPaneView: View {
         } label: {
             Image(systemName: model.inspectorVisible ? "info.circle.fill" : "info.circle")
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.borderless).pointerCursor()
         .help(model.inspectorVisible ? "Hide value inspector" : "Inspect value (Space)")
         .padding(.leading, SexiQLSpace.sm)
     }
@@ -628,21 +718,21 @@ private struct QueryErrorView: View {
                 } label: {
                     Label(copied ? "Copied" : "Copy Error", systemImage: copied ? "checkmark" : "doc.on.doc")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.bordered).pointerCursor()
                 .controlSize(.small)
                 if let onFix {
                     Button("Fix with AI", action: onFix)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.borderedProminent).pointerCursor()
                         .controlSize(.small)
                 }
                 if let onAsk {
                     Button("Ask in chat", action: onAsk)
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.bordered).pointerCursor()
                         .controlSize(.small)
                 }
                 if let onDismiss {
                     Button("Dismiss", action: onDismiss)
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.bordered).pointerCursor()
                         .controlSize(.small)
                 }
             }
