@@ -2,10 +2,14 @@ import Foundation
 import SQLDrivers
 
 public struct StreamingAdapter: Sendable {
-    public var batchSize: Int
+    public static let defaultMaxRows = 1_000_000
 
-    public init(batchSize: Int = 250) {
+    public var batchSize: Int
+    public var maxRows: Int
+
+    public init(batchSize: Int = 250, maxRows: Int = StreamingAdapter.defaultMaxRows) {
         self.batchSize = batchSize
+        self.maxRows = maxRows
     }
 
     public func consume(
@@ -17,6 +21,8 @@ public struct StreamingAdapter: Sendable {
         var pending: [SQLRow] = []
         pending.reserveCapacity(batchSize)
         var buffered = 0
+        var reachedCap = false
+        var discardedRow = false
 
         do {
             for try await row in rows {
@@ -26,8 +32,21 @@ public struct StreamingAdapter: Sendable {
                     await MainActor.run { onUpdate(model) }
                     return .failure(SQLDriverError.cancelled)
                 }
+                if reachedCap {
+                    discardedRow = true
+                    continue
+                }
                 pending.append(row)
                 buffered += 1
+                if model.rows.count + pending.count >= maxRows {
+                    reachedCap = true
+                    model.append(contentsOf: pending)
+                    pending.removeAll(keepingCapacity: true)
+                    buffered = 0
+                    await MainActor.run { onUpdate(model) }
+                    await Task.yield()
+                    continue
+                }
                 if buffered >= batchSize {
                     model.append(contentsOf: pending)
                     pending.removeAll(keepingCapacity: true)
@@ -37,7 +56,12 @@ public struct StreamingAdapter: Sendable {
                 }
             }
             model.append(contentsOf: pending)
-            model.finish()
+            if reachedCap && discardedRow {
+                model.markTruncated()
+                model.finish(totalRowCount: maxRows)
+            } else {
+                model.finish()
+            }
             await MainActor.run { onUpdate(model) }
             return .success(model)
         } catch is CancellationError {
