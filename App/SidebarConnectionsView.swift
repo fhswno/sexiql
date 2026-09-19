@@ -19,7 +19,7 @@ struct SidebarConnectionsView: View {
                         .frame(width: 22, height: 22)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.borderless).pointerCursor()
                 .help("Add connection")
             }
 
@@ -71,16 +71,6 @@ struct SidebarConnectionsView: View {
             }
 
             Spacer(minLength: 0)
-
-            HStack(spacing: SexiQLSpace.sm) {
-                Image(systemName: "key.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                Text("Passwords encrypted on this Mac")
-                    .font(SexiQLType.meta)
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(SexiQLSpace.lg)
         }
     }
 
@@ -169,7 +159,7 @@ struct SidebarConnectionsView: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plain).pointerCursor()
             .help(rowHelp(connection, status: status))
 
             Menu {
@@ -196,7 +186,7 @@ struct SidebarConnectionsView: View {
                     model.showingConnectionEditor = true
                 }
                 Button("Delete", role: .destructive) {
-                    model.deleteProfile(connection)
+                    model.requestDeleteProfile(connection)
                 }
             } label: {
                 Image(systemName: "ellipsis")
@@ -241,7 +231,7 @@ struct SidebarConnectionsView: View {
                 model.showingConnectionEditor = true
             }
             Button("Delete", role: .destructive) {
-                model.deleteProfile(connection)
+                model.requestDeleteProfile(connection)
             }
         }
     }
