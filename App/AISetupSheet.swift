@@ -56,11 +56,13 @@ struct AISetupSheet: View {
                     model.openSettings(focus: .ai)
                 }
                 .keyboardShortcut("o", modifiers: .command)
+                .pointerCursor()
                 Spacer()
                 Button("Cancel") {
                     model.dismissAISetup()
                 }
                 .keyboardShortcut(.cancelAction)
+                .pointerCursor()
                 primaryButton
             }
         }
@@ -162,7 +164,7 @@ struct AISetupSheet: View {
         }
         .keyboardShortcut(.defaultAction)
         .disabled(isChecking || !canContinue)
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.borderedProminent).pointerCursor()
     }
 
     private var primaryTitle: String {
