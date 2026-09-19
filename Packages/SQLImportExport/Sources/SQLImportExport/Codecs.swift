@@ -154,7 +154,7 @@ public enum CSVCodec: Sendable {
             } else if scalar == delimiter {
                 try finishField()
             } else if scalar == "\r" {
-                // ignore
+                continue
             } else if scalar == "\n" {
                 try finishRow()
                 line += 1
@@ -243,16 +243,18 @@ public enum CSVCodec: Sendable {
 
 public enum JSONCodec: Sendable {
     public static func encode(columns: [String], rows: [[SQLValue]]) throws -> String {
-        var objects: [[String: Any]] = []
+        var objects: [[String: JSONPayload]] = []
         objects.reserveCapacity(rows.count)
         for row in rows {
-            var object: [String: Any] = [:]
+            var object: [String: JSONPayload] = [:]
             for (index, column) in columns.enumerated() where index < row.count {
-                object[column] = jsonValue(row[index])
+                object[column] = JSONPayload(row[index])
             }
             objects.append(object)
         }
-        let data = try JSONSerialization.data(withJSONObject: objects, options: [.prettyPrinted, .sortedKeys])
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(objects)
         guard let string = String(data: data, encoding: .utf8) else {
             throw ImportExportError.malformedJSON(message: "encoding failed")
         }
@@ -283,18 +285,6 @@ public enum JSONCodec: Sendable {
         return (columns, rows)
     }
 
-    private static func jsonValue(_ value: SQLValue) -> Any {
-        switch value {
-        case .null: NSNull()
-        case .bool(let flag): flag
-        case .int(let integer): integer
-        case .double(let double): double
-        case .string(let string): string
-        case .data(let data): data.base64EncodedString()
-        case .date(let date): ISO8601DateFormatter().string(from: date)
-        }
-    }
-
     private static func sqlValue(from value: Any) -> SQLValue {
         if value is NSNull { return .null }
         if let string = value as? String { return inferredValue(string) }
@@ -322,5 +312,57 @@ public enum JSONCodec: Sendable {
         if let integer = Int64(trimmed) { return .int(integer) }
         if let double = Double(trimmed.replacingOccurrences(of: ",", with: ".")) { return .double(double) }
         return .string(text)
+    }
+}
+
+enum JSONPayload: Codable {
+    case null
+    case bool(Bool)
+    case int(Int64)
+    case double(Double)
+    case string(String)
+    case data(Data)
+    case date(Date)
+
+    init(_ value: SQLValue) {
+        switch value {
+        case .null: self = .null
+        case .bool(let flag): self = .bool(flag)
+        case .int(let integer): self = .int(integer)
+        case .double(let double): self = .double(double)
+        case .string(let string): self = .string(string)
+        case .data(let data): self = .data(data)
+        case .date(let date): self = .date(date)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .null: try container.encodeNil()
+        case .bool(let flag): try container.encode(flag)
+        case .int(let integer): try container.encode(integer)
+        case .double(let double): try container.encode(double)
+        case .string(let string): try container.encode(string)
+        case .data(let data): try container.encode(data.base64EncodedString())
+        case .date(let date): try container.encode(ISO8601DateFormatter().string(from: date))
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let flag = try? container.decode(Bool.self) {
+            self = .bool(flag)
+        } else if let integer = try? container.decode(Int64.self) {
+            self = .int(integer)
+        } else if let double = try? container.decode(Double.self) {
+            self = .double(double)
+        } else if let string = try? container.decode(String.self) {
+            self = .string(string)
+        } else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "unsupported JSON value")
+        }
     }
 }
