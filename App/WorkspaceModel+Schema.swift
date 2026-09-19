@@ -18,7 +18,7 @@ extension WorkspaceModel {
             return
         }
         if isProfileBusy(profile.id) {
-            if let snap = schemaByProfile[profile.id],
+            if schemaByProfile[profile.id] != nil,
                selectedConnectionID == profile.id || selectedTabConnectionID == profile.id {
                 applySchemaSnapshot(profile.id)
             } else if selectedConnectionID == profile.id {
