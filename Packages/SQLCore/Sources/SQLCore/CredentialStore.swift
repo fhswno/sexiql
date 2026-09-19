@@ -28,15 +28,7 @@ public struct KeychainCredentialStore: CredentialStore {
     }
 
     public func password(for profileID: UUID) throws -> String? {
-        if let password = try vault.password(for: profileID) {
-            return password
-        }
-        if let legacy = try? legacyKeychain.password(for: profileID) {
-            try? vault.setPassword(legacy, for: profileID)
-            try? legacyKeychain.deletePassword(for: profileID)
-            return legacy
-        }
-        return nil
+        try vault.password(for: profileID)
     }
 
     public func deletePassword(for profileID: UUID) throws {
@@ -45,7 +37,7 @@ public struct KeychainCredentialStore: CredentialStore {
     }
 }
 
-// MARK: - Encrypted file vault
+// MARK: - Encrypted File Vault
 
 struct EncryptedCredentialVault: Sendable {
     private let directory: URL
@@ -144,14 +136,10 @@ struct EncryptedCredentialVault: Sendable {
     }
 }
 
-// MARK: - Legacy login keychain (read/migrate only)
+// MARK: - Legacy Keychain Cleanup
 
 struct LegacyLoginKeychainStore: Sendable {
     private static let service = "com.sexiql.app"
-
-    func password(for profileID: UUID) throws -> String? {
-        return nil
-    }
 
     func deletePassword(for profileID: UUID) throws {
         let query: [String: Any] = [
