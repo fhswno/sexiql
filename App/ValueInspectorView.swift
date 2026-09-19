@@ -52,18 +52,18 @@ struct ValueInspectorView: View {
                     .labelsHidden()
                 }
                 Button("Copy", action: onCopy)
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.borderless).pointerCursor()
                     .help("Copy value")
                 if let onEdit {
                     Button("Edit", action: onEdit)
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.borderless).pointerCursor()
                 }
                 Button {
                     onClose()
                 } label: {
                     Image(systemName: "xmark")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.borderless).pointerCursor()
                 .help("Close (Esc)")
             }
             .padding(.horizontal, SexiQLSpace.lg)
