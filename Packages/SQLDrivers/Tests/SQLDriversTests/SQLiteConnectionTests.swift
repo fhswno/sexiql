@@ -117,6 +117,41 @@ final class SQLiteConnectionTests: XCTestCase {
             XCTFail("unexpected error \(error)")
         }
     }
+
+    func testReadOnlyConnectionDoesNotCreateOrWrite() async throws {
+        let connection = SQLiteConnection(
+            profile: ConnectionProfile(name: "readonly", kind: .sqlite, database: dbPath, readOnly: true)
+        )
+        do {
+            try await connection.connect(password: nil)
+            XCTFail("expected a missing read-only database to fail")
+        } catch let error as SQLDriverError {
+            guard case .sqlite = error else {
+                XCTFail("unexpected error \(error)")
+                return
+            }
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dbPath))
+
+        let writable = makeConnection()
+        try await writable.connect(password: nil)
+        _ = try await writable.execute("CREATE TABLE t (id INTEGER)")
+        try await writable.disconnect()
+
+        let readonlyExisting = SQLiteConnection(
+            profile: ConnectionProfile(name: "readonly", kind: .sqlite, database: dbPath, readOnly: true)
+        )
+        try await readonlyExisting.connect(password: nil)
+        let result = try await readonlyExisting.execute("SELECT name FROM sqlite_master")
+        XCTAssertEqual(result.rows.first?.values.first, .string("t"))
+        do {
+            _ = try await readonlyExisting.execute("INSERT INTO t VALUES (1)")
+            XCTFail("expected a read-only violation")
+        } catch let error as SQLDriverError {
+            XCTAssertEqual(error, .readOnlyViolation)
+        }
+        try await readonlyExisting.disconnect()
+    }
 }
 
 extension QueryResult {
