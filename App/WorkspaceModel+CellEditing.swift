@@ -66,7 +66,7 @@ extension WorkspaceModel {
             return result.model[row, index]
         }
         guard !primaryKeyValues.contains(.null) else {
-            editingMessage = "Cannot edit a row whose primary key is NULL."
+            failEditing("Cannot edit a row whose primary key is NULL.")
             return
         }
         let edit = CellEdit(
@@ -149,31 +149,48 @@ extension WorkspaceModel {
     }
 
     func undoLastEdit(tabID: UUID, resultIndex: Int) {
-        guard let result = results[tabID]?[resultIndex], let mutation = result.undoStack.popLast() else { return }
         guard let profileID = document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID else { return }
-        Task { await applyMutation(inverse(mutation), to: result, profileID: profileID, pushRedo: true, redoOriginal: mutation) }
+        guard let result = results[tabID]?[resultIndex], let mutation = result.undoStack.popLast() else { return }
+        Task {
+            let applied = await applyMutation(
+                inverse(mutation),
+                to: result,
+                profileID: profileID,
+                pushRedo: true,
+                redoOriginal: mutation
+            )
+            if !applied {
+                result.undoStack.append(mutation)
+            }
+        }
     }
 
     func redoLastEdit(tabID: UUID, resultIndex: Int) {
-        guard let result = results[tabID]?[resultIndex], let mutation = result.redoStack.popLast() else { return }
         guard let profileID = document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID else { return }
-        Task { await applyMutation(mutation, to: result, profileID: profileID, pushRedo: false) }
+        guard let result = results[tabID]?[resultIndex], let mutation = result.redoStack.popLast() else { return }
+        Task {
+            let applied = await applyMutation(mutation, to: result, profileID: profileID, pushRedo: false)
+            if !applied {
+                result.redoStack.append(mutation)
+            }
+        }
     }
 
+    @discardableResult
     func applyMutation(
         _ mutation: ResultMutation,
         to result: StatementResult,
         profileID: UUID,
         pushRedo: Bool,
         redoOriginal: ResultMutation? = nil
-    ) async {
+    ) async -> Bool {
         switch mutation {
         case .cell(let edit):
-            await applyCellEdit(edit, to: result, profileID: profileID, pushRedo: pushRedo, redoOriginal: redoOriginal)
+            return await applyCellEdit(edit, to: result, profileID: profileID, pushRedo: pushRedo, redoOriginal: redoOriginal)
         case .insert(let row):
-            await applyInsert(row, to: result, profileID: profileID, pushRedo: pushRedo, redoOriginal: redoOriginal)
+            return await applyInsert(row, to: result, profileID: profileID, pushRedo: pushRedo, redoOriginal: redoOriginal)
         case .delete(let row):
-            await applyDelete(row, to: result, profileID: profileID, pushRedo: pushRedo, redoOriginal: redoOriginal)
+            return await applyDelete(row, to: result, profileID: profileID, pushRedo: pushRedo, redoOriginal: redoOriginal)
         }
     }
 
@@ -201,6 +218,18 @@ extension WorkspaceModel {
 
     // MARK: Internals
 
+    /// Surfaces a cell-editing failure in the results pane, auto-clearing
+    /// after a few seconds so stale errors don't linger.
+    func failEditing(_ message: String) {
+        editingMessage = message
+        pendingEditingMessageClear?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.editingMessage = nil
+        }
+        pendingEditingMessageClear = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
+    }
+
     private func inverse(_ mutation: ResultMutation) -> ResultMutation {
         switch mutation {
         case .cell(let edit):
@@ -221,16 +250,17 @@ extension WorkspaceModel {
         }
     }
 
+    @discardableResult
     private func applyCellEdit(
         _ edit: CellEdit,
         to result: StatementResult,
         profileID: UUID,
         pushRedo: Bool,
         redoOriginal: ResultMutation?
-    ) async {
+    ) async -> Bool {
         guard let connection = await connectionManager.connection(for: profileID) else {
-            editingMessage = "Not connected"
-            return
+            failEditing("Not connected")
+            return false
         }
         let kind = profileKind(profileID)
         do {
@@ -241,8 +271,8 @@ extension WorkspaceModel {
                     newValue: edit.newValue,
                     primaryKeyValues: edit.primaryKeyValues
                 ) else {
-                    editingMessage = "That Redis field is not editable."
-                    return
+                    failEditing("Cannot edit this row: it contains a NULL or binary value.")
+                    return false
                 }
                 _ = try await connection.execute(command)
             } else {
@@ -264,8 +294,10 @@ extension WorkspaceModel {
             result.model.setValue(edit.newValue, at: row, column: edit.column)
             result.model.markEdited(row: row, column: edit.column)
             recordMutation(.cell(edit), on: result, pushRedo: pushRedo, redoOriginal: redoOriginal)
+            return true
         } catch {
-            editingMessage = error.localizedDescription
+            failEditing(error.localizedDescription)
+            return false
         }
     }
 
@@ -304,7 +336,7 @@ extension WorkspaceModel {
         do {
             if kind == .redis {
                 guard let command = RedisEdit.insertCommand(table: table, columns: names, values: params) else {
-                    result.message = "Cannot insert that Redis value."
+                    result.message = "Cannot insert: the row contains a NULL or binary value."
                     return
                 }
                 _ = try await connection.execute(command)
@@ -431,7 +463,7 @@ extension WorkspaceModel {
     private func insertDefaultRow(into result: StatementResult, profileID: UUID) async {
         guard let table = result.editableTable else { return }
         guard let connection = await connectionManager.connection(for: profileID) else {
-            editingMessage = "Not connected"
+            failEditing("Not connected")
             return
         }
         let kind = profileKind(profileID)
@@ -454,7 +486,7 @@ extension WorkspaceModel {
                 )
             )
         } catch {
-            editingMessage = error.localizedDescription
+            failEditing(error.localizedDescription)
             activeError = error.localizedDescription
         }
     }
@@ -462,7 +494,7 @@ extension WorkspaceModel {
     private func deleteRows(_ rows: [Int], from result: StatementResult, profileID: UUID) async {
         guard let table = result.editableTable else { return }
         guard let connection = await connectionManager.connection(for: profileID) else {
-            editingMessage = "Not connected"
+            failEditing("Not connected")
             return
         }
         let kind = profileKind(profileID)
@@ -480,7 +512,7 @@ extension WorkspaceModel {
             }
             let pk = primaryKeyValues(table: table, row: index, in: result.model)
             guard !pk.contains(.null) else {
-                editingMessage = "Cannot delete a row whose primary key is NULL."
+                failEditing("Cannot delete a row whose primary key is NULL.")
                 return
             }
             planned.append((index, result.model.rows[index].values, pk))
@@ -515,21 +547,22 @@ extension WorkspaceModel {
             }
             result.redoStack = []
         } catch {
-            editingMessage = error.localizedDescription
+            failEditing(error.localizedDescription)
             activeError = error.localizedDescription
         }
     }
 
+    @discardableResult
     private func applyInsert(
         _ mutation: RowMutation,
         to result: StatementResult,
         profileID: UUID,
         pushRedo: Bool,
         redoOriginal: ResultMutation?
-    ) async {
+    ) async -> Bool {
         guard let connection = await connectionManager.connection(for: profileID) else {
-            editingMessage = "Not connected"
-            return
+            failEditing("Not connected")
+            return false
         }
         let kind = profileKind(profileID)
         do {
@@ -539,8 +572,8 @@ extension WorkspaceModel {
                     columns: mutation.table.columns,
                     values: mutation.values
                 ) else {
-                    editingMessage = "Cannot insert that Redis value."
-                    return
+                    failEditing("Cannot insert: the row contains a NULL or binary value.")
+                    return false
                 }
                 _ = try await connection.execute(command)
             } else {
@@ -557,21 +590,24 @@ extension WorkspaceModel {
             result.model.insertRow(SQLRow(values: mutation.values), at: index)
             result.undoStack = result.undoStack.map { $0.shifting(insertedRow: index) }
             recordMutation(.insert(mutation), on: result, pushRedo: pushRedo, redoOriginal: redoOriginal)
+            return true
         } catch {
-            editingMessage = error.localizedDescription
+            failEditing(error.localizedDescription)
+            return false
         }
     }
 
+    @discardableResult
     private func applyDelete(
         _ mutation: RowMutation,
         to result: StatementResult,
         profileID: UUID,
         pushRedo: Bool,
         redoOriginal: ResultMutation?
-    ) async {
+    ) async -> Bool {
         guard let connection = await connectionManager.connection(for: profileID) else {
-            editingMessage = "Not connected"
-            return
+            failEditing("Not connected")
+            return false
         }
         let kind = profileKind(profileID)
         do {
@@ -580,8 +616,8 @@ extension WorkspaceModel {
                     table: mutation.table,
                     primaryKeyValues: mutation.primaryKeyValues
                 ) else {
-                    editingMessage = "Cannot delete that Redis value."
-                    return
+                    failEditing("Cannot delete that Redis value.")
+                    return false
                 }
                 _ = try await connection.execute(command)
             } else {
@@ -600,8 +636,10 @@ extension WorkspaceModel {
                 result.undoStack = result.undoStack.compactMap { $0.shifting(deletedRow: row) }
             }
             recordMutation(.delete(mutation), on: result, pushRedo: pushRedo, redoOriginal: redoOriginal)
+            return true
         } catch {
-            editingMessage = error.localizedDescription
+            failEditing(error.localizedDescription)
+            return false
         }
     }
 
