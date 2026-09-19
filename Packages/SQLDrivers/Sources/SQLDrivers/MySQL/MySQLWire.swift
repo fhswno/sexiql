@@ -1,7 +1,7 @@
 import Foundation
 
 public enum MySQLWireError: Error, LocalizedError, Sendable, Equatable {
-    case truncated
+    case truncated(String)
     case invalidPacket
     case invalidHandshake
     case authenticationFailed(String)
@@ -12,7 +12,7 @@ public enum MySQLWireError: Error, LocalizedError, Sendable, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .truncated: "Truncated MySQL packet"
+        case .truncated(let detail): "Truncated MySQL packet: \(detail)"
         case .invalidPacket: "Invalid MySQL packet"
         case .invalidHandshake: "Invalid MySQL handshake"
         case .authenticationFailed(let message): message
@@ -85,7 +85,9 @@ public struct MySQLByteReader: Sendable {
     public var isAtEnd: Bool { offset >= data.count }
 
     public mutating func readUInt8() throws -> UInt8 {
-        guard offset < data.count else { throw MySQLWireError.truncated }
+        guard offset >= 0, offset < data.count else {
+            throw MySQLWireError.truncated("readUInt8 at offset \(offset), payload \(data.count) bytes")
+        }
         defer { offset += 1 }
         return data[data.startIndex + offset]
     }
@@ -120,7 +122,9 @@ public struct MySQLByteReader: Sendable {
     }
 
     public mutating func readBytes(_ count: Int) throws -> Data {
-        guard count >= 0, offset + count <= data.count else { throw MySQLWireError.truncated }
+        guard offset >= 0, count >= 0, count <= data.count - offset else {
+            throw MySQLWireError.truncated("readBytes need \(count) at offset \(offset), payload \(data.count) bytes")
+        }
         let result = Data(data[data.startIndex + offset..<data.startIndex + offset + count])
         offset += count
         return result
@@ -136,13 +140,12 @@ public struct MySQLByteReader: Sendable {
         while offset < data.count && data[data.startIndex + offset] != 0 {
             offset += 1
         }
-        guard offset < data.count else { throw MySQLWireError.truncated }
+        guard offset < data.count else { throw MySQLWireError.truncated("readCString at offset \(offset), payload \(data.count) bytes") }
         let result = String(decoding: data[data.startIndex + start..<data.startIndex + offset], as: UTF8.self)
         offset += 1
         return result
     }
 
-    /// Reads MySQL's length-encoded integer. `nil` means the NULL marker.
     public mutating func readLengthEncodedInteger() throws -> UInt64? {
         let first = try readUInt8()
         switch first {
@@ -255,6 +258,10 @@ public struct MySQLCapabilities: OptionSet, Sendable, Equatable {
     public static let deprecateEOF = MySQLCapabilities(rawValue: 0x0100_0000)
 }
 
+enum MySQLServerStatus {
+    static let moreResults: UInt16 = 0x0008
+}
+
 public struct MySQLHandshake: Sendable, Equatable {
     public var protocolVersion: UInt8
     public var serverVersion: String
@@ -347,6 +354,8 @@ public struct MySQLColumnDefinition: Sendable, Equatable {
     public var type: UInt8
     public var flags: UInt16
     public var decimals: UInt8
+    public var characterSet: UInt16
+    public var columnLength: UInt32
 
     public init(
         name: String,
@@ -354,7 +363,9 @@ public struct MySQLColumnDefinition: Sendable, Equatable {
         type: UInt8,
         flags: UInt16,
         decimals: UInt8,
-        schema: String? = nil
+        schema: String? = nil,
+        characterSet: UInt16 = 0,
+        columnLength: UInt32 = 0
     ) {
         self.name = name
         self.tableName = tableName
@@ -362,6 +373,8 @@ public struct MySQLColumnDefinition: Sendable, Equatable {
         self.type = type
         self.flags = flags
         self.decimals = decimals
+        self.characterSet = characterSet
+        self.columnLength = columnLength
     }
 
     public static func parse(_ payload: Data) throws -> MySQLColumnDefinition {
@@ -374,8 +387,8 @@ public struct MySQLColumnDefinition: Sendable, Equatable {
         _ = try reader.readLengthEncodedString()
         let fixedLength = try reader.readUInt8()
         guard fixedLength >= 0x0c else { throw MySQLWireError.invalidPacket }
-        _ = try reader.readUInt32()
-        _ = try reader.readUInt32()
+        let characterSet = try reader.readUInt16()
+        let columnLength = try reader.readUInt32()
         let type = try reader.readUInt8()
         let flags = try reader.readUInt16()
         let decimals = try reader.readUInt8()
@@ -386,7 +399,9 @@ public struct MySQLColumnDefinition: Sendable, Equatable {
             type: type,
             flags: flags,
             decimals: decimals,
-            schema: schema
+            schema: schema,
+            characterSet: characterSet,
+            columnLength: columnLength
         )
     }
 
@@ -421,6 +436,10 @@ public enum MySQLColumnType {
     public static let mediumBlob: UInt8 = 250
     public static let longBlob: UInt8 = 251
     public static let blob: UInt8 = 252
+
+    public static func isTextualBlob(_ type: UInt8) -> Bool {
+        type == tinyBlob || type == mediumBlob || type == longBlob || type == blob
+    }
     public static let varString: UInt8 = 253
     public static let string: UInt8 = 254
     public static let geometry: UInt8 = 255
