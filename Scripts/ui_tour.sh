@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 
 SDK="$(xcrun --show-sdk-path)"
 TARGET="arm64-apple-macosx26.0"
-OUT="$PWD/build/uiprobe"
+OUT="$PWD/build/uitour"
 
 if [ ! -d build/testmods ]; then
   echo "error: build/testmods missing — run Scripts/test.sh first"
@@ -22,10 +22,10 @@ APP_SOURCES=$(find "$ROOT/App" -maxdepth 1 -name '*.swift' ! -name 'SexiQLApp.sw
     -I "$ROOT/build/testmods" -sdk "$SDK" -target "$TARGET" \
     $(printf '%s ' "$APP_SOURCES") )
 
-swiftc -parse-as-library -swift-version 6 -module-name UIProbe \
+swiftc -parse-as-library -swift-version 6 -module-name UITour \
   -I "$OUT" -I build/testmods -sdk "$SDK" -target "$TARGET" \
-  Scripts/ui_probe.swift \
+  Scripts/ui_tour.swift \
   "$OUT"/*.o build/testmods/*.o \
-  -o "$OUT/ui_probe"
+  -o "$OUT/ui_tour"
 
-"$OUT/ui_probe"
+"$OUT/ui_tour"

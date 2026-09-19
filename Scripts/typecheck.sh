@@ -5,11 +5,30 @@ cd "$(dirname "$0")/.."
 SDK="$(xcrun --show-sdk-path)"
 TARGET="arm64-apple-macosx26.0"
 OUT=".typecheck"
+STRICT="${SEXIQL_TYPECHECK_STRICT:-0}"
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
-swiftc -typecheck -swift-version 6 -parse-as-library \
+LOG="$OUT/typecheck.log"
+: > "$LOG"
+
+fail() {
+  cat "$LOG" >&2
+  echo "typecheck failed" >&2
+  exit 1
+}
+
+run_tc() {
+  echo ">> $1"
+  shift
+  if ! swiftc "$@" >>"$LOG" 2>&1; then
+    fail
+  fi
+}
+
+run_tc "XCTest runtime" \
+  -typecheck -swift-version 6 -parse-as-library \
   -module-name XCTest \
   -emit-module -emit-module-path "$OUT/XCTest.swiftmodule" \
   -sdk "$SDK" -target "$TARGET" \
@@ -24,8 +43,8 @@ for pkg in "${PACKAGES[@]}"; do
     continue
   fi
   sources=$(find "$src_dir" -name '*.swift' | sort)
-  echo ">> $pkg sources"
-  swiftc -typecheck -swift-version 6 -parse-as-library $sources \
+  run_tc "$pkg sources" \
+    -typecheck -swift-version 6 -parse-as-library $sources \
     -module-name "$pkg" \
     -emit-module -emit-module-path "$OUT/$pkg.swiftmodule" \
     -enable-testing \
@@ -34,8 +53,8 @@ for pkg in "${PACKAGES[@]}"; do
   if [ -d "Packages/$pkg/Tests" ]; then
     tests=$(find "Packages/$pkg/Tests" -name '*.swift' | sort)
     if [ -n "$tests" ]; then
-      echo ">> $pkg tests"
-      swiftc -typecheck -swift-version 6 $tests \
+      run_tc "$pkg tests" \
+        -typecheck -swift-version 6 $tests \
         -enable-testing \
         -I "$OUT" -sdk "$SDK" -target "$TARGET"
     fi
@@ -43,8 +62,14 @@ for pkg in "${PACKAGES[@]}"; do
 done
 
 app_sources=$(find App -name '*.swift' | sort)
-echo ">> App target"
-swiftc -typecheck -swift-version 6 -parse-as-library $app_sources \
+run_tc "App target" \
+  -typecheck -swift-version 6 -parse-as-library $app_sources \
   -I "$OUT" -sdk "$SDK" -target "$TARGET"
+
+if [ "$STRICT" = "1" ] && grep -q "warning:" "$LOG"; then
+  grep "warning:" "$LOG" >&2
+  echo "typecheck strict: warnings found (SEXIQL_TYPECHECK_STRICT=1)" >&2
+  exit 1
+fi
 
 echo "All packages and the app target typecheck clean."
