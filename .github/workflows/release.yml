@@ -1,0 +1,29 @@
+name: Release Artifact
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    name: Build + Package Release Artifact
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build App
+        run: Scripts/build.sh
+      - name: Package (Zip + Checksum)
+        run: Scripts/release.sh
+      - name: Preflight (Local — Notarization Stays Manual)
+        run: Scripts/release_preflight.sh
+      - name: Upload Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ github.ref_name }}
+          path: |
+            build/releases/*/SexiQL-*.zip
+            build/releases/*/SexiQL-*.zip.sha256
+          retention-days: 90
