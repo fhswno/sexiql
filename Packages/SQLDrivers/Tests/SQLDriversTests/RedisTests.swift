@@ -40,6 +40,18 @@ final class RedisTests: XCTestCase {
         XCTAssertEqual(try decoder.consumeReply(), .error("ERR unknown command"))
     }
 
+    func testRESPRejectsOversizedBulkAndArrays() throws {
+        var bulk = RedisDecoder(data: Data("$\(RedisDecoder.maximumBulkLength + 1)\r\n".utf8))
+        XCTAssertThrowsError(try bulk.readReply()) { error in
+            XCTAssertEqual(error as? RedisError, .protocolError("Redis bulk value is too large"))
+        }
+
+        var array = RedisDecoder(data: Data("*\(RedisDecoder.maximumArrayCount + 1)\r\n".utf8))
+        XCTAssertThrowsError(try array.readReply()) { error in
+            XCTAssertEqual(error as? RedisError, .protocolError("Redis array is too large"))
+        }
+    }
+
     func testResultGridHGETALLAndLRANGE() throws {
         let hash = try RedisResultGrid.queryResult(
             for: .array([.bulk(Data("name".utf8)), .bulk(Data("ada".utf8))]),
@@ -76,6 +88,30 @@ final class RedisTests: XCTestCase {
         XCTAssertEqual(
             RedisEdit.deleteCommand(table: hash!, primaryKeyValues: [.string("name")]),
             "HDEL user:1 name"
+        )
+    }
+
+    func testEditCommandsRefuseNullOrBinaryValues() {
+        let hash = RedisEdit.table(forCommand: ["HGETALL", "user:1"], columns: [
+            SQLColumn(name: "field", dataType: "bulk", ordinal: 0),
+            SQLColumn(name: "value", dataType: "bulk", ordinal: 1),
+        ])!
+
+        XCTAssertNil(RedisEdit.updateCommand(table: hash, column: 1, newValue: .string("x"), primaryKeyValues: [.null]))
+        XCTAssertNil(RedisEdit.updateCommand(table: hash, column: 1, newValue: .null, primaryKeyValues: [.string("name")]))
+        XCTAssertNil(RedisEdit.updateCommand(
+            table: hash,
+            column: 1,
+            newValue: .data(Data([0xff, 0xfe])),
+            primaryKeyValues: [.string("name")]
+        ))
+        XCTAssertNil(RedisEdit.deleteCommand(table: hash, primaryKeyValues: [.null]))
+
+        XCTAssertNil(RedisEdit.insertCommand(table: hash, columns: ["field", "value"], values: [.null, .string("x")]))
+        XCTAssertNil(RedisEdit.insertCommand(table: hash, columns: ["field", "value"], values: [.string("f"), .null]))
+        XCTAssertEqual(
+            RedisEdit.insertCommand(table: hash, columns: ["field", "value"], values: [.string("f"), .string("v")]),
+            "HSET user:1 f v"
         )
     }
 
