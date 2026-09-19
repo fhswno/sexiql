@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SwiftLint
+        run: brew install swiftlint
+      - name: Lint (Errors Fail, Warnings Report)
+        run: swiftlint lint --quiet --reporter github-actions-logging
+
+  typecheck:
+    name: Typecheck
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Typecheck All Targets (Strict)
+        env:
+          SEXIQL_TYPECHECK_STRICT: "1"
+        run: Scripts/typecheck.sh
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Offline Test Suites
+        run: Scripts/test.sh
+
+  ui-smoke:
+    name: UI Smoke
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Headless UI Probe
+        run: Scripts/ui_probe.sh
+
+  ui-tour:
+    name: UI Tour
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run UI Tour
+        run: Scripts/ui_tour.sh
+
+  live-integrations:
+    name: Live Integrations
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MySQL + Redis
+        run: brew install mysql redis
+      - name: Start services
+        run: |
+          brew services start mysql
+          brew services start redis
+      - name: Wait for MySQL
+        run: |
+          MYSQL_ADMIN="$(brew --prefix mysql)/bin/mysqladmin"
+          for i in $(seq 1 60); do
+            if "$MYSQL_ADMIN" ping -uroot --silent 2>/dev/null; then
+              echo "MySQL ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MySQL did not become ready" >&2
+          exit 1
+      - name: Create Test Database
+        run: |
+          "$(brew --prefix mysql)/bin/mysql" -uroot -e "CREATE DATABASE IF NOT EXISTS sexiql_qa"
+      - name: Run Test Suites (Live Engines)
+        env:
+          SEXIQL_TEST_MYSQL_URL: mysql://root@127.0.0.1:3306/sexiql_qa
+          SEXIQL_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+        run: Scripts/test.sh
+
+  build:
+    name: Build
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build App
+        run: |
+          set -o pipefail
+          Scripts/build.sh 2>&1 | tee build.log
+      - name: Enforce Zero Warnings
+        run: |
+          if grep -q "warning:" build.log; then
+            echo "build produced warnings" >&2
+            exit 1
+          fi
+      - name: Upload App Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SexiQL-app
+          path: build/SexiQL.app
+          retention-days: 7
