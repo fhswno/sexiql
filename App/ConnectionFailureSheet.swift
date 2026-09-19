@@ -93,19 +93,22 @@ struct ConnectionFailureSheet: View {
             Button("Copy Error") {
                 copyError()
             }
+            .pointerCursor()
             Spacer()
             Button("Dismiss") {
                 model.dismissConnectionFailure()
             }
             .keyboardShortcut(.cancelAction)
+            .pointerCursor()
             Button("Edit…") {
                 model.editConnection(for: failure.profileID)
             }
+            .pointerCursor()
             Button("Retry") {
                 model.retryConnection(for: failure.profileID)
             }
             .keyboardShortcut(.defaultAction)
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.borderedProminent).pointerCursor()
         }
         .padding(SexiQLSpace.xl)
     }
