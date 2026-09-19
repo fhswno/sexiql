@@ -7,6 +7,25 @@ TARGET="arm64-apple-macosx26.0"
 APP="$PWD/build/SexiQL.app"
 OBJ="$PWD/build/obj"
 MODULES="$PWD/build/modules"
+VERSION_FILE="$PWD/VERSION"
+
+if [ ! -f "$VERSION_FILE" ]; then
+  echo "error: missing VERSION file" >&2
+  exit 1
+fi
+VERSION="$(tr -d '[:space:]' < "$VERSION_FILE")"
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+  echo "error: invalid version in VERSION: $VERSION" >&2
+  exit 1
+fi
+BUILD_NUMBER="${SEXIQL_BUILD_NUMBER:-}"
+if [ -z "$BUILD_NUMBER" ]; then
+  BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || true)"
+fi
+if [[ ! "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+  BUILD_NUMBER="1"
+fi
+SIGN_IDENTITY="${SEXIQL_SIGN_IDENTITY:--}"
 
 rm -rf "$APP" "$OBJ" "$MODULES"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$OBJ" "$MODULES"
@@ -42,7 +61,7 @@ swiftc -sdk "$SDK" -target "$TARGET" \
   -o "$APP/Contents/MacOS/SexiQL"
 
 echo ">> Info.plist"
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -62,9 +81,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>$VERSION</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$BUILD_NUMBER</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Dave Ohayon. All rights reserved.</string>
 	<key>LSApplicationCategoryType</key>
@@ -81,9 +100,12 @@ PLIST
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 echo ">> App icon"
-swift Scripts/generate_icon.swift >/dev/null
-ICON_DARK="App/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
-ICON_LIGHT="App/Assets.xcassets/AppIcon.appiconset/AppIcon-light.png"
+ICON_DARK="$PWD/App/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+ICON_LIGHT="$PWD/App/Assets.xcassets/AppIcon.appiconset/AppIcon-light.png"
+if [ ! -f "$ICON_DARK" ] || [ ! -f "$ICON_LIGHT" ]; then
+  echo "error: missing app icons in App/Assets.xcassets/AppIcon.appiconset" >&2
+  exit 1
+fi
 cp "$ICON_DARK" "$APP/Contents/Resources/AppIcon-dark.png"
 cp "$ICON_LIGHT" "$APP/Contents/Resources/AppIcon-light.png"
 ICONSET="build/AppIcon.iconset"
@@ -105,8 +127,8 @@ for spec in \
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 
-echo ">> Signing (ad-hoc)"
-codesign --force --sign - --entitlements App/SexiQL.entitlements "$APP"
+echo ">> Signing ($SIGN_IDENTITY)"
+codesign --force --options runtime --sign "$SIGN_IDENTITY" --entitlements App/SexiQL.entitlements "$APP"
 
-echo "Built: $APP"
+echo "Built: $APP (version $VERSION, build $BUILD_NUMBER)"
 echo "Run:   open build/SexiQL.app"
