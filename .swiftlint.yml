@@ -1,0 +1,18 @@
+disabled_rules:
+  - line_length
+  - identifier_name
+  - type_name
+  - type_body_length
+  - function_body_length
+  - function_parameter_count
+  - file_length
+  - cyclomatic_complexity
+  - nesting
+  - todo
+
+excluded:
+  - .build
+  - .typecheck
+  - build
+  - Scripts
+  - DerivedData
