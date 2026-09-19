@@ -26,7 +26,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         DispatchQueue.main.async { [weak self] in
             self?.launchFinished = true
+            self?.rekeyCloseWindowShortcut()
         }
+    }
+
+    private func rekeyCloseWindowShortcut() {
+        guard let fileMenu = NSApp.mainMenu?.item(withTitle: "File")?.submenu else { return }
+        for item in fileMenu.items where item.action == #selector(NSWindow.performClose(_:)) {
+            item.keyEquivalent = "w"
+            item.keyEquivalentModifierMask = [.command, .shift]
+        }
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        rekeyCloseWindowShortcut()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
