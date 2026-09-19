@@ -73,6 +73,21 @@ struct ConnectionEditorView: View {
                     HStack {
                         TextField("Database file path", text: $database)
                         Button("Browse…") { pickSQLiteFile() }
+                            .pointerCursor()
+                    }
+                    if !database.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        HStack(spacing: 6) {
+                            Image(systemName: "doc.text.fill")
+                                .font(.caption2)
+                            Text((database as NSString).lastPathComponent)
+                                .font(.caption)
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.secondary.opacity(0.12), in: Capsule(style: .continuous))
+                        .help(database)
                     }
                 } else {
                     TextField("Host", text: $host)
@@ -106,6 +121,15 @@ struct ConnectionEditorView: View {
                         Text("Required (encrypt, no cert verify)").tag(TLSMode.required)
                         Text("Verify full (encrypt + cert)").tag(TLSMode.verifyFull)
                     }
+                    if tlsMode == .off {
+                        Text("Connection is unencrypted.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    } else if !tlsMode.verifiesCertificate {
+                        Text("TLS is enabled, but the server certificate is not verified.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
 
                 if kind != .sqlite {
@@ -127,11 +151,24 @@ struct ConnectionEditorView: View {
             .formStyle(.grouped)
 
             if let testMessage {
-                Text(testMessage)
-                    .font(.caption)
+                HStack(spacing: 0) {
+                    HStack(spacing: 6) {
+                        Image(systemName: testFailed ? "xmark.circle.fill" : "checkmark.circle.fill")
+                            .font(.caption)
+                        Text(testMessage)
+                            .font(.caption.weight(.medium))
+                            .lineLimit(2)
+                    }
                     .foregroundStyle(testFailed ? SexiQLColors.failed : SexiQLColors.connected)
-                    .padding(.horizontal)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(
+                        (testFailed ? SexiQLColors.failed : SexiQLColors.connected).opacity(0.12),
+                        in: Capsule(style: .continuous)
+                    )
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal)
             }
 
             HStack {
@@ -146,15 +183,18 @@ struct ConnectionEditorView: View {
                     }
                 }
                 .disabled(!isValid || isTesting)
+                .pointerCursor()
                 Spacer()
                 Button("Cancel") {
                     model.showingConnectionEditor = false
                 }
                 .keyboardShortcut(.cancelAction)
+                .pointerCursor()
                 Button("Save") {
                     save()
                 }
                 .keyboardShortcut(.defaultAction)
+                .pointerCursor()
                 .disabled(!isValid)
             }
             .padding()
