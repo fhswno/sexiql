@@ -137,6 +137,20 @@ extension WorkspaceModel {
         pendingDisconnect = nil
     }
 
+    func requestDeleteProfile(_ profile: ConnectionProfile) {
+        pendingDeleteProfile = profile
+    }
+
+    func confirmPendingDeleteProfile() {
+        guard let profile = pendingDeleteProfile else { return }
+        pendingDeleteProfile = nil
+        deleteProfile(profile)
+    }
+
+    func cancelPendingDeleteProfile() {
+        pendingDeleteProfile = nil
+    }
+
     func disconnect(_ profile: ConnectionProfile) {
         Task {
             try? await connectionManager.disconnect(profile.id)
@@ -291,6 +305,20 @@ extension WorkspaceModel {
     }
 
     func saveProfile(_ profile: ConnectionProfile, password: String?) {
+        let existing = document.connections.first(where: { $0.id == profile.id })
+        let connectionSettingsChanged = existing.map { old in
+            old.kind != profile.kind
+                || old.host != profile.host
+                || old.port != profile.port
+                || old.database != profile.database
+                || old.username != profile.username
+                || old.tlsMode != profile.tlsMode
+                || old.tlsServerName != profile.tlsServerName
+                || old.useSSH != profile.useSSH
+                || old.ssh != profile.ssh
+                || old.readOnly != profile.readOnly
+        } ?? false
+
         if let index = document.connections.firstIndex(where: { $0.id == profile.id }) {
             document.connections[index] = profile
         } else {
@@ -299,7 +327,24 @@ extension WorkspaceModel {
         if let password {
             try? credentialStore.setPassword(password, for: profile.id)
         }
+
+        if connectionSettingsChanged {
+            Task {
+                try? await connectionManager.disconnect(profile.id)
+                await MainActor.run {
+                    connectionStatuses[profile.id] = .disconnected
+                }
+            }
+        }
         saveWorkspace()
+    }
+
+    func requestImportCSV() {
+        guard selectedConnectionID != nil else {
+            activeError = "Select a connection before importing."
+            return
+        }
+        showingImportFilePicker = true
     }
 
     func moveConnection(id: UUID, before targetID: UUID?) {
