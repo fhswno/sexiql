@@ -98,6 +98,7 @@ public enum SQLDriverError: Error, LocalizedError, Sendable, Equatable {
     case notImplemented(feature: String)
     case connectionFailed(message: String)
     case sqlite(message: String)
+    case readOnlyViolation
     case cancelled
 
     public var errorDescription: String? {
@@ -110,6 +111,8 @@ public enum SQLDriverError: Error, LocalizedError, Sendable, Equatable {
             message
         case .sqlite(let message):
             message
+        case .readOnlyViolation:
+            "Connection is read-only."
         case .cancelled:
             "Cancelled"
         }
