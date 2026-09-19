@@ -54,6 +54,13 @@ extension WorkspaceModel {
         selectedTabID = tabID
     }
 
+    func cycleSelectedTab(_ offset: Int) {
+        let tabs = document.openTabs
+        guard tabs.count > 1, let current = selectedTabID,
+              let index = tabs.firstIndex(where: { $0.id == current }) else { return }
+        selectEditorTab(tabs[(index + offset + tabs.count) % tabs.count].id)
+    }
+
     @discardableResult
     func renameTab(_ tabID: UUID, to rawTitle: String) -> Bool {
         let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
