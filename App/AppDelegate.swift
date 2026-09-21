@@ -10,7 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
-        SparkleUpdater.shared.configureIfEnabled()
+        _ = SparkleUpdater.shared
         AppIconAppearance.apply(for: .system)
 
         appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { _, _ in
