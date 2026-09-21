@@ -1,18 +1,40 @@
 import Foundation
+import Sparkle
 
 @MainActor
-final class SparkleUpdater {
+final class SparkleUpdater: NSObject, ObservableObject {
     static let shared = SparkleUpdater()
 
-    static let feedURLString = ""
+    private let controller: SPUStandardUpdaterController
 
-    private init() {}
+    @Published var automaticallyChecksForUpdates: Bool {
+        didSet {
+            controller.updater.automaticallyChecksForUpdates = automaticallyChecksForUpdates
+        }
+    }
 
-    func configureIfEnabled() {
-        guard !Self.feedURLString.isEmpty,
-              let url = URL(string: Self.feedURLString) else { return }
-        #if SPARKLE
-        _ = url
-        #endif
+    override private init() {
+        UserDefaults.standard.register(defaults: [
+            "SUEnableAutomaticChecks": true,
+            "SUScheduledCheckInterval": 86400.0,
+        ])
+        let delegate = TestFeedURLDelegate()
+        controller = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: delegate,
+            userDriverDelegate: nil
+        )
+        controller.updater.automaticallyDownloadsUpdates = true
+        automaticallyChecksForUpdates = controller.updater.automaticallyChecksForUpdates
+    }
+
+    func checkForUpdates() {
+        controller.updater.checkForUpdates()
+    }
+}
+
+final class TestFeedURLDelegate: NSObject, SPUUpdaterDelegate {
+    func feedURLString(for updater: SPUUpdater) -> String? {
+        UserDefaults.standard.string(forKey: "SUFeedURL")
     }
 }
