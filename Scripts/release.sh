@@ -4,16 +4,22 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 usage() {
-  printf 'Usage: %s [--notarize]\n' "$0"
+  printf 'Usage: %s [--notarize] [--skip-appcast]\n' "$0"
   printf '\nBuilds a versioned zip. Notarization requires --notarize and a\n'
   printf 'Developer ID identity plus a notarytool keychain profile.\n'
+  printf -- '--skip-appcast omits EdDSA-signed appcast generation (CI, where the\n'
+  printf 'signing key never leaves the release machine).\n'
 }
 
 NOTARIZE=0
+SKIP_APPCAST=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --notarize)
       NOTARIZE=1
+      ;;
+    --skip-appcast)
+      SKIP_APPCAST=1
       ;;
     --help|-h)
       usage
@@ -95,6 +101,14 @@ else
 fi
 
 echo ">> Generating appcast (EdDSA-signed)"
+if [ "$SKIP_APPCAST" -eq 1 ]; then
+  printf 'Appcast generation skipped (--skip-appcast)\n'
+  CHECKSUM="$RELEASE_DIR/SexiQL-$VERSION.zip.sha256"
+  shasum -a 256 "$ZIP" | awk -v name="$(basename "$ZIP")" '{print $1 "  " name}' > "$CHECKSUM"
+  printf 'Created: %s\n' "$ZIP"
+  printf 'SHA-256: %s\n' "$CHECKSUM"
+  exit 0
+fi
 VENDOR_DIR="$PWD/Vendor"
 APPCAST_URL_PREFIX="${APPCAST_URL_PREFIX:-https://github.com/fhswno/sexiql/releases/download/v$VERSION/}"
 APPCAST_STAGE="$PWD/build/appcast"

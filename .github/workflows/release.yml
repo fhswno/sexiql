@@ -15,8 +15,8 @@ jobs:
           fetch-depth: 0
       - name: Build App
         run: Scripts/build.sh
-      - name: Package (Zip + Checksum)
-        run: Scripts/release.sh
+      - name: Package (Zip + Checksum, no appcast)
+        run: Scripts/release.sh --skip-appcast
       - name: Preflight (Local — Notarization Stays Manual)
         run: Scripts/release_preflight.sh
       - name: Upload Release Artifact
