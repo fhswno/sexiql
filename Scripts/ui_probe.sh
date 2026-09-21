@@ -19,11 +19,11 @@ APP_SOURCES=$(find "$ROOT/App" -maxdepth 1 -name '*.swift' ! -name 'SexiQLApp.sw
 ( cd "$OUT" && swiftc -c -parse-as-library -enable-testing -swift-version 6 \
     -module-name SexiQLView \
     -emit-module -emit-module-path "$OUT/SexiQLView.swiftmodule" \
-    -I "$ROOT/build/testmods" -sdk "$SDK" -target "$TARGET" \
+    -I "$ROOT/build/testmods" -F "$ROOT/Vendor" -sdk "$SDK" -target "$TARGET" \
     $(printf '%s ' "$APP_SOURCES") )
 
 swiftc -parse-as-library -swift-version 6 -module-name UIProbe \
-  -I "$OUT" -I build/testmods -sdk "$SDK" -target "$TARGET" \
+  -I "$OUT" -I build/testmods -F "$ROOT/Vendor" -sdk "$SDK" -target "$TARGET" -framework Sparkle -Xlinker -rpath -Xlinker "$ROOT/Vendor" \
   Scripts/ui_probe.swift \
   "$OUT"/*.o build/testmods/*.o \
   -o "$OUT/ui_probe"

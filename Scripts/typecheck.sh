@@ -62,9 +62,9 @@ for pkg in "${PACKAGES[@]}"; do
 done
 
 app_sources=$(find App -name '*.swift' | sort)
-run_tc "App target" \
-  -typecheck -swift-version 6 -parse-as-library $app_sources \
-  -I "$OUT" -sdk "$SDK" -target "$TARGET"
+echo ">> App target"
+swiftc -typecheck -swift-version 6 -parse-as-library $app_sources \
+  -I "$OUT" -F "$PWD/Vendor" -sdk "$SDK" -target "$TARGET"
 
 if [ "$STRICT" = "1" ] && grep -q "warning:" "$LOG"; then
   grep "warning:" "$LOG" >&2

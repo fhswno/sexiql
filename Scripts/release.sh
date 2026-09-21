@@ -94,7 +94,30 @@ else
   printf 'Notarization skipped. Use --notarize only for an explicitly authorized network operation.\n'
 fi
 
+echo ">> Generating appcast (EdDSA-signed)"
+VENDOR_DIR="$PWD/Vendor"
+APPCAST_URL_PREFIX="${APPCAST_URL_PREFIX:-https://github.com/fhswno/sexiql/releases/download/v$VERSION/}"
+APPCAST_STAGE="$PWD/build/appcast"
+rm -rf "$APPCAST_STAGE"
+mkdir -p "$APPCAST_STAGE"
+cp "$ZIP" "$APPCAST_STAGE/"
+
+if ! "$VENDOR_DIR/bin/generate_appcast" \
+    --download-url-prefix "$APPCAST_URL_PREFIX" \
+    "$APPCAST_STAGE"; then
+  rm -rf "$APPCAST_STAGE"
+  if [ "$NOTARIZE" -ne 1 ] && [ "${ALLOW_MISSING_APPCAST:-0}" = "1" ]; then
+    printf 'Appcast generation skipped (no signing key available)\n'
+    exit 0
+  fi
+  printf 'error: appcast generation failed\n' >&2
+  exit 1
+fi
+
+mv "$APPCAST_STAGE/appcast.xml" "$RELEASE_DIR/appcast.xml"
+
 CHECKSUM="$RELEASE_DIR/SexiQL-$VERSION.zip.sha256"
 shasum -a 256 "$ZIP" | awk -v name="$(basename "$ZIP")" '{print $1 "  " name}' > "$CHECKSUM"
 printf 'Created: %s\n' "$ZIP"
+printf 'Appcast: %s\n' "$RELEASE_DIR/appcast.xml"
 printf 'SHA-256: %s\n' "$CHECKSUM"

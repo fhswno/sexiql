@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+REPO_ROOT="$PWD"
 
 SDK="$(xcrun --show-sdk-path)"
 TARGET="arm64-apple-macosx26.0"
@@ -30,6 +31,9 @@ SIGN_IDENTITY="${SEXIQL_SIGN_IDENTITY:--}"
 rm -rf "$APP" "$OBJ" "$MODULES"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$OBJ" "$MODULES"
 
+# Sparkle framework (pinned download, checksum-verified; skipped when cached)
+Scripts/install_sparkle.sh
+
 PACKAGES=(SQLCore SQLTunnel SQLDrivers SQLEditor SQLGrid SQLExplainer SQLImportExport SQLUI)
 
 for pkg in "${PACKAGES[@]}"; do
@@ -52,11 +56,13 @@ app_sources=()
 while IFS= read -r f; do app_sources+=("$PWD/$f"); done < <(find App -maxdepth 1 -name '*.swift' | sort)
 ( cd "$OBJ" && swiftc -swift-version 6 -c -parse-as-library \
     -module-name SexiQL \
-    -I "$MODULES" -sdk "$SDK" -target "$TARGET" \
+    -I "$MODULES" -F "$REPO_ROOT/Vendor" -sdk "$SDK" -target "$TARGET" \
     "${app_sources[@]}" )
 
 echo ">> Linking"
 swiftc -sdk "$SDK" -target "$TARGET" \
+  -F "$REPO_ROOT/Vendor" -framework Sparkle \
+  -Xlinker -rpath -Xlinker "@executable_path/../Frameworks" \
   "$OBJ"/*.o \
   -o "$APP/Contents/MacOS/SexiQL"
 
@@ -92,8 +98,19 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 	<string>26.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>SUFeedURL</key>
+	<string>https://github.com/fhswno/sexiql/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>UID8KYPpF8PLH9kSaU69ssmJDcgQ1uLRZdaslu6wdfY=</string>
+	<key>SUScheduledCheckInterval</key>
+	<string>86400</string>
 </dict>
 </plist>
 PLIST
@@ -126,6 +143,11 @@ for spec in \
   sips -z "$1" "$2" "$ICON_DARK" --out "$ICONSET/$3" >/dev/null
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+
+echo ">> Sparkle framework"
+mkdir -p "$APP/Contents/Frameworks"
+cp -R "Vendor/Sparkle.framework" "$APP/Contents/Frameworks/"
+codesign --force --options runtime --deep --sign "$SIGN_IDENTITY" "$APP/Contents/Frameworks/Sparkle.framework"
 
 echo ">> Signing ($SIGN_IDENTITY)"
 codesign --force --options runtime --sign "$SIGN_IDENTITY" --entitlements App/SexiQL.entitlements "$APP"
