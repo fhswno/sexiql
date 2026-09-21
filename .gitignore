@@ -12,3 +12,5 @@ xcuserdata/
 
 # macOS
 .DS_Store
+Vendor/
+SparkleKey.local
