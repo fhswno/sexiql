@@ -154,7 +154,7 @@ public enum CSVCodec: Sendable {
             } else if scalar == delimiter {
                 try finishField()
             } else if scalar == "\r" {
-                continue
+                // skipped
             } else if scalar == "\n" {
                 try finishRow()
                 line += 1
