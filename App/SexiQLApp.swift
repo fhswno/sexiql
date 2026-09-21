@@ -22,6 +22,12 @@ struct SexiQLApp: App {
         }
         .windowToolbarStyle(.unified)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    SparkleUpdater.shared.checkForUpdates()
+                }
+            }
+
             CommandGroup(after: .newItem) {
                 Button("New Query Tab") {
                     model.newTab()
