@@ -28,6 +28,7 @@ struct UITour {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("UITour-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        UserDefaults.standard.removeObject(forKey: WorkspaceModel.welcomeSeenDefaultsKey)
 
         let model = WorkspaceModel(
             store: WorkspaceStore(baseDirectory: tempDir),
@@ -57,6 +58,26 @@ struct UITour {
         window.contentView = hosting
         window.makeKeyAndOrderFront(nil)
         try await pump(0.4)
+
+        guard model.showWelcome else {
+            throw TourError.step("welcome overlay did not appear on first launch")
+        }
+        try await pump(0.8)
+        note("welcome shown")
+
+        model.dismissWelcome()
+        try await pump(0.6)
+        guard !model.showWelcome else {
+            throw TourError.step("welcome overlay did not dismiss")
+        }
+        model.replayWelcome()
+        try await pump(0.6)
+        guard model.showWelcome else {
+            throw TourError.step("welcome replay did not appear")
+        }
+        model.dismissWelcome()
+        try await pump(0.6)
+        note("welcome dismiss + replay")
 
         for _ in 0..<2 {
             model.toggleSidebar()
