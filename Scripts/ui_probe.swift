@@ -13,6 +13,7 @@ struct UIProbe {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("UIProbe-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        UserDefaults.standard.set(true, forKey: WorkspaceModel.welcomeSeenDefaultsKey)
 
         let model = WorkspaceModel(
             store: WorkspaceStore(baseDirectory: tempDir),
