@@ -40,6 +40,13 @@ enum SettingsSearchIndex {
             keywords: ["copy", "tsv", "csv", "json", "clipboard", "selected", "rows", "paste"],
             section: .appearance
         ),
+        item(
+            id: "welcome-animation",
+            title: "Welcome animation",
+            subtitle: "Replay the first-launch welcome screen (Play Again)",
+            keywords: ["welcome", "animation", "replay", "play again", "splash", "onboarding", "intro", "first launch", "star", "github"],
+            section: .appearance
+        ),
     ]
 
     private static let workspace: [SettingsSearchItem] = [
