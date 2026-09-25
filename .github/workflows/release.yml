@@ -15,7 +15,9 @@ jobs:
           fetch-depth: 0
       - name: Build App
         run: Scripts/build.sh
-      - name: Package (Zip + Checksum, no appcast)
+      - name: Install dmgbuild
+        run: Scripts/install_dmgbuild.sh
+      - name: Package (Zip + DMG, no appcast)
         run: Scripts/release.sh --skip-appcast
       - name: Preflight (Local — Notarization Stays Manual)
         run: Scripts/release_preflight.sh
@@ -26,4 +28,6 @@ jobs:
           path: |
             build/releases/*/SexiQL-*.zip
             build/releases/*/SexiQL-*.zip.sha256
+            build/releases/*/SexiQL-*.dmg
+            build/releases/*/SexiQL-*.dmg.sha256
           retention-days: 90
