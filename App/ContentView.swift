@@ -83,6 +83,16 @@ struct ContentView: View {
         .onAppear {
             AppIconAppearance.apply(for: model.appearance)
             model.restoreLiveConnectionsIfNeeded()
+            if model.showWelcome {
+                WelcomeWindow.shared.show(model: model)
+            }
+        }
+        .onChange(of: model.showWelcome) { _, shown in
+            if shown {
+                WelcomeWindow.shared.show(model: model)
+            } else {
+                WelcomeWindow.shared.close()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .sexiqlSystemAppearanceDidChange)) { _ in
             if model.appearance == .system {
