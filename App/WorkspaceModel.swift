@@ -105,6 +105,8 @@ final class WorkspaceModel {
     var pendingDisconnect: ConnectionProfile?
     var pendingDeleteProfile: ConnectionProfile?
     var pendingDeleteRows: (tabID: UUID, resultIndex: Int, rows: [Int])?
+    var showWelcome = false
+    static let welcomeSeenDefaultsKey = "welcome.seen.v1"
     private var didRestoreConnections = false
     var canCopySelectedRows: Bool { copySelectedRowsHandler != nil }
     var canAddResultRow: Bool { addResultRowHandler != nil }
@@ -147,6 +149,7 @@ final class WorkspaceModel {
         self.credentialStore = credentialStore
         self.connectionManager = ConnectionManager(credentialStore: credentialStore)
         self.document = (try? store.load()) ?? WorkspaceDocument()
+        showWelcome = !UserDefaults.standard.bool(forKey: Self.welcomeSeenDefaultsKey)
         if document.settings.autoRestoreWorkspace {
             selectedTabID = document.selectedTabID ?? document.openTabs.first?.id
             selectedConnectionID = document.selectedConnectionID
@@ -184,6 +187,19 @@ final class WorkspaceModel {
         for id in ids where seen.insert(id).inserted {
             guard let profile = document.connections.first(where: { $0.id == id }) else { continue }
             reconnectQuietly(profile)
+        }
+    }
+
+    func dismissWelcome() {
+        showWelcome = false
+        UserDefaults.standard.set(true, forKey: Self.welcomeSeenDefaultsKey)
+    }
+
+    func replayWelcome() {
+        showWelcome = true
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = NSApp.windows.first(where: { $0.isVisible && $0.contentViewController != nil }) {
+            window.makeKeyAndOrderFront(nil)
         }
     }
 
