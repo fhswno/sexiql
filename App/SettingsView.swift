@@ -34,12 +34,11 @@ struct SettingsView: View {
             Form {
                 if showsSection(.appearance) {
                     Section {
-                        Picker("Theme", selection: appearanceBinding) {
-                            ForEach(AppearanceMode.allCases) { mode in
-                                Text(mode.displayName).tag(mode)
-                            }
+                        HStack {
+                            Text("Theme")
+                            Spacer()
+                            ThemeSegmentedPicker(selection: appearanceBinding)
                         }
-                        .pickerStyle(.segmented)
                         Picker("Accent Color", selection: tintBinding) {
                             Text("System").tag(String?.none)
                             Text("Blue").tag(Optional("blue"))
@@ -47,15 +46,39 @@ struct SettingsView: View {
                             Text("Green").tag(Optional("green"))
                             Text("Purple").tag(Optional("purple"))
                         }
+                        .pointerCursor()
                         Toggle("Compact result grid", isOn: compactGridBinding)
-                        Picker("Copy selected rows as", selection: copyFormatBinding) {
-                            ForEach(CopySelectedRowsFormat.allCases) { format in
-                                Text(format.displayName).tag(format)
+                            .pointerCursor()
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text("Copy selected rows as")
+                                Spacer()
+                                Picker("", selection: copyFormatBinding) {
+                                    ForEach(CopySelectedRowsFormat.allCases) { format in
+                                        Text(format.displayName).tag(format)
+                                    }
+                                }
+                                .labelsHidden()
+                                .fixedSize()
+                                .pointerCursor()
                             }
+                            Text("Used by ⌘C and row Copy. Toolbar still offers CSV and JSON.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        Text("Used by ⌘C and row Copy. Toolbar still offers CSV and JSON.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text("Welcome Animation")
+                                Spacer()
+                                Button("Play Again") {
+                                    model.replayWelcome()
+                                }
+                                .pointerCursor()
+                            }
+                            Text("Plays on first launch. Replay it anytime from here.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     } header: {
                         sectionHeader(.appearance)
                     }
@@ -63,13 +86,16 @@ struct SettingsView: View {
                 if showsSection(.workspace) {
                     Section {
                         Toggle("Restore workspace on launch", isOn: restoreBinding)
+                            .pointerCursor()
                         Toggle("Confirm before disconnect", isOn: confirmBinding)
+                            .pointerCursor()
                         Picker("Auto-limit SELECT", selection: resultRowLimitBinding) {
                             Text("Off").tag(Optional<Int>.none)
                             Text("100").tag(Optional(100))
                             Text("1,000").tag(Optional(1000))
                             Text("10,000").tag(Optional(10000))
                         }
+                        .pointerCursor()
                         Text("Appends LIMIT to top-level SELECT / WITH unless the query already has LIMIT or FETCH. Redis is never limited.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -80,6 +106,7 @@ struct SettingsView: View {
                 if showsSection(.layout) {
                     Section {
                         Toggle("Show sidebar", isOn: sidebarBinding)
+                            .pointerCursor()
                     } header: {
                         sectionHeader(.layout)
                     }
@@ -87,6 +114,7 @@ struct SettingsView: View {
                 if showsSection(.ai) {
                     Section {
                         Toggle("Enable AI features", isOn: aiEnabledBinding)
+                            .pointerCursor()
                         TextField("Ollama URL", text: ollamaURLBinding)
                             .textFieldStyle(.roundedBorder)
                         HStack {
@@ -99,6 +127,7 @@ struct SettingsView: View {
                                         Text(name).tag(name)
                                     }
                                 }
+                                .pointerCursor()
                             }
                             Button {
                                 Task { await model.refreshOllamaModels(autoSelect: true) }
@@ -110,6 +139,7 @@ struct SettingsView: View {
                                 }
                             }
                             .disabled(!model.aiEnabled || model.isLoadingOllamaModels)
+                            .pointerCursor()
                         }
                         if let err = model.ollamaModelsError {
                             Text(err)
@@ -258,6 +288,39 @@ struct SettingsView: View {
             get: { model.ollamaModel },
             set: { model.ollamaModel = $0 }
         )
+    }
+}
+
+struct ThemeSegmentedPicker: View {
+    @Binding var selection: AppearanceMode
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(AppearanceMode.allCases) { mode in
+                Button {
+                    selection = mode
+                } label: {
+                    Text(mode.displayName)
+                        .font(.callout)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 4)
+                        .background {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(selection == mode ? Color.accentColor.opacity(0.22) : Color.clear)
+                        }
+                        .foregroundStyle(selection == mode ? Color.primary : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .pointerCursor()
+                .accessibilityAddTraits(selection == mode ? [.isSelected] : [])
+                .accessibilityLabel("Theme \(mode.displayName)")
+            }
+        }
+        .padding(2)
+        .background {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.06))
+        }
     }
 }
 
