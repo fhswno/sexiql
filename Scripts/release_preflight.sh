@@ -92,6 +92,36 @@ else
   echo "Notarization ticket: not stapled"
 fi
 
+DMG="build/releases/$VERSION/SexiQL-$VERSION.dmg"
+if [ -f "$DMG" ]; then
+  echo "DMG: $DMG"
+  if xcrun stapler validate "$DMG" >/dev/null 2>&1; then
+    echo "DMG notarization ticket: stapled"
+    MOUNT="$(mktemp -d)/dmg"
+    if ! hdiutil attach "$DMG" -mountpoint "$MOUNT" -nobrowse -readonly -quiet; then
+      echo "error: failed to mount $DMG for inspection" >&2
+      exit 1
+    fi
+    if spctl -a -vv "$MOUNT/SexiQL.app" 2>&1 | grep -q "accepted"; then
+      echo "DMG Gatekeeper assessment: accepted"
+    else
+      spctl -a -vv "$MOUNT/SexiQL.app" >&2 || true
+      hdiutil detach "$MOUNT" -quiet || true
+      echo "error: app inside DMG failed Gatekeeper assessment" >&2
+      exit 1
+    fi
+    hdiutil detach "$MOUNT" -quiet
+  elif [ "$REQUIRE_RELEASE" -eq 1 ]; then
+    echo "error: --release requires a stapled DMG notarization ticket" >&2
+    exit 1
+  else
+    echo "DMG notarization ticket: not stapled"
+  fi
+elif [ "$REQUIRE_RELEASE" -eq 1 ]; then
+  echo "error: --release requires a built DMG at $DMG" >&2
+  exit 1
+fi
+
 if [ "$REQUIRE_RELEASE" -eq 0 ]; then
   echo "No signing, upload, notarization, or network operation was performed."
 fi
