@@ -34,7 +34,7 @@ run_tc "XCTest runtime" \
   -sdk "$SDK" -target "$TARGET" \
   Scripts/TestRuntime.swift
 
-PACKAGES=(SQLCore SQLTunnel SQLDrivers SQLEditor SQLGrid SQLExplainer SQLImportExport SQLUI)
+PACKAGES=(SQLCore SQLTunnel SQLDrivers SQLEditor SQLGrid SQLExplainer SQLImportExport SQLCanvas SQLUI)
 
 for pkg in "${PACKAGES[@]}"; do
   src_dir="Packages/$pkg/Sources"
