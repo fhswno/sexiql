@@ -118,7 +118,7 @@ jobs:
           Scripts/build.sh 2>&1 | tee build.log
       - name: Enforce zero warnings
         run: |
-          if grep -q "warning:" build.log; then
+          if grep -n "warning:" build.log; then
             echo "build produced warnings" >&2
             exit 1
           fi
