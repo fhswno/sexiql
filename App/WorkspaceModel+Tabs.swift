@@ -28,6 +28,48 @@ extension WorkspaceModel {
         return tab
     }
 
+    @discardableResult
+    func newCanvasTab(profileID: UUID?) -> Bool {
+        guard let profileID, let profile = document.connections.first(where: { $0.id == profileID }) else {
+            activeError = "Select a connection before opening a schema canvas."
+            return false
+        }
+        guard profile.kind != .redis else {
+            activeError = "Schema canvas is unavailable for Redis connections."
+            return false
+        }
+        let tab = EditorTabState(
+            title: uniqueTabTitle("Canvas · \(profile.name)"),
+            connectionProfileID: profileID,
+            sql: "",
+            titleIsCustom: true,
+            kind: .canvas
+        )
+        document.openTabs.append(tab)
+        selectEditorTab(tab.id)
+        if status(for: profileID) != .connected {
+            reconnectQuietly(profile)
+        }
+        saveWorkspace()
+        return true
+    }
+
+    func isCanvasTab(_ tabID: UUID?) -> Bool {
+        guard let tabID else { return false }
+        return document.openTabs.first(where: { $0.id == tabID })?.kind == .canvas
+    }
+
+    var selectedTabIsCanvas: Bool {
+        isCanvasTab(selectedTabID)
+    }
+
+    var canOpenCanvasTab: Bool {
+        guard !selectedTabIsCanvas else { return false }
+        guard let profileID = selectedConnectionID,
+              let profile = document.connections.first(where: { $0.id == profileID }) else { return false }
+        return profile.kind != .redis
+    }
+
     func closeTab(_ tabID: UUID) {
         cancelRun(tabID)
         cancelEditorAI()
@@ -38,6 +80,10 @@ extension WorkspaceModel {
         selectedResultIndex[tabID] = nil
         explainPlans[tabID] = nil
         explainErrors[tabID] = nil
+        canvasViewModels[tabID] = nil
+        if let narration = canvasNarrationModels.removeValue(forKey: tabID) {
+            narration.cancel()
+        }
         if selectedTabID == tabID, let next = document.openTabs.last?.id {
             selectEditorTab(next)
         } else if selectedTabID == tabID {
