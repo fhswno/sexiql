@@ -8,6 +8,7 @@ import SQLUI
 
 struct ResultsPaneView: View {
     @Environment(WorkspaceModel.self) private var model
+    @Environment(\.colorScheme) private var colorScheme
     let tabID: UUID
 
     @State private var sortOrdinal: Int?
@@ -17,6 +18,12 @@ struct ResultsPaneView: View {
     @State private var requestedEdit: CellEditTarget?
     @State private var copyFeedback: String?
     @State private var editingErrorCopied = false
+    @State private var hoveredMenu: String?
+    @State private var lastPillDismiss: Date?
+    @State private var exportAnchor: NSRect = .zero
+    @State private var copyAnchor: NSRect = .zero
+    @State private var exportPanel: DropdownPanel?
+    @State private var copyPanel: DropdownPanel?
 
     private var tabIsReadOnly: Bool {
         let profileID = model.document.openTabs.first(where: { $0.id == tabID })?.connectionProfileID
@@ -432,25 +439,27 @@ struct ResultsPaneView: View {
                         .transition(.opacity)
                 }
 
-                Menu {
-                    Button("Copy as CSV") { copyVisible(result, format: .csv) }
-                    Button("Copy as JSON") { copyVisible(result, format: .json) }
+                Button {
+                    toggleDropdown(kind: .export, result: result)
                 } label: {
-                    Label("Copy", systemImage: "doc.on.clipboard")
+                    pillDropdownLabel("Export", isShown: exportPanel != nil)
                 }
-                .menuStyle(.borderlessButton)
+                .buttonStyle(.plain)
+                .background(PillAnchorView { _, rect in exportAnchor = rect })
+                .pointerCursor()
+                .help("Save full result set to a file")
+
+                Button {
+                    toggleDropdown(kind: .copy, result: result)
+                } label: {
+                    pillDropdownLabel("Copy", isShown: copyPanel != nil)
+                }
+                .buttonStyle(.plain)
+                .background(PillAnchorView { _, rect in copyAnchor = rect })
+                .pointerCursor()
                 .help(selectedRowIDs.isEmpty
                       ? "Copy visible rows (respects filter and sort)"
                       : "Copy \(selectedRowIDs.count) selected row\(selectedRowIDs.count == 1 ? "" : "s")")
-
-                Menu {
-                    Button("CSV…") { export(result, format: .csv) }
-                    Button("JSON…") { export(result, format: .json) }
-                } label: {
-                    Label("Export", systemImage: "square.and.arrow.up")
-                }
-                .menuStyle(.borderlessButton)
-                .help("Save full result set to a file")
             }
             .font(SexiQLType.rowTitle)
             .padding(.horizontal, SexiQLSpace.lg)
@@ -460,6 +469,152 @@ struct ResultsPaneView: View {
             Rectangle()
                 .fill(Color(nsColor: .separatorColor).opacity(0.45))
                 .frame(height: 1)
+        }
+    }
+
+    private func pillColors(isShown: Bool) -> (fill: Color, border: Color) {
+        if colorScheme == .dark {
+            return (
+                Color.primary.opacity(isShown ? 0.16 : 0.10),
+                Color.primary.opacity(isShown ? 0.42 : 0.28)
+            )
+        }
+        return (
+            isShown ? Color.accentColor.opacity(0.12) : Color(nsColor: .controlBackgroundColor),
+            isShown ? Color.accentColor.opacity(0.85) : Color(nsColor: .separatorColor)
+        )
+    }
+
+    private func pillDropdownLabel(_ title: String, isShown: Bool) -> some View {
+        let colors = pillColors(isShown: isShown || hoveredMenu == title)
+        return HStack(spacing: 5) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+            Image(systemName: "chevron.down")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Capsule().fill(colors.fill))
+        .overlay(Capsule().strokeBorder(colors.border, lineWidth: 1))
+        .contentShape(Capsule())
+        .onHover { hovering in
+            hoveredMenu = hovering ? title : (hoveredMenu == title ? nil : hoveredMenu)
+        }
+    }
+
+    private enum DropdownKind {
+        case export
+        case copy
+    }
+
+    private func toggleDropdown(kind: DropdownKind, result: StatementResult) {
+        if exportPanel == nil, copyPanel == nil,
+           let last = lastPillDismiss, Date().timeIntervalSince(last) < 0.35 {
+            return
+        }
+
+        func closeAll() {
+            exportPanel?.dismiss()
+            exportPanel = nil
+            copyPanel?.dismiss()
+            copyPanel = nil
+        }
+
+        switch kind {
+        case .export:
+            if exportPanel != nil {
+                closeAll()
+                return
+            }
+            closeAll()
+            guard NSApp.mainWindow != nil || NSApp.keyWindow != nil else { return }
+            let rows = VStack(spacing: 2) {
+                ResultsPillItem("CSV…") { [weak result] in
+                    guard let result else { return }
+                    export(result, format: .csv)
+                    exportPanel?.dismiss()
+                }
+                ResultsPillItem("JSON…") { [weak result] in
+                    guard let result else { return }
+                    export(result, format: .json)
+                    exportPanel?.dismiss()
+                }
+            }
+            let content = rows
+                .padding(.horizontal, 5)
+                .padding(.vertical, 6)
+                .frame(minWidth: 160)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(.regularMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(
+                                    colorScheme == .dark
+                                        ? Color.primary.opacity(0.14)
+                                        : Color(nsColor: .separatorColor),
+                                    lineWidth: 1
+                                )
+                        )
+                )
+            let hosting = NSHostingView(rootView: content)
+            exportPanel = DropdownPanel(
+                anchorScreenRect: exportAnchor,
+                width: 160,
+                content: hosting,
+                onDismiss: {
+                    exportPanel = nil
+                    lastPillDismiss = Date()
+                }
+            )
+        case .copy:
+            if copyPanel != nil {
+                closeAll()
+                return
+            }
+            closeAll()
+            guard NSApp.mainWindow != nil || NSApp.keyWindow != nil else { return }
+            let rows = VStack(spacing: 2) {
+                ResultsPillItem("Copy as CSV") { [weak result] in
+                    guard let result else { return }
+                    copyVisible(result, format: .csv)
+                    copyPanel?.dismiss()
+                }
+                ResultsPillItem("Copy as JSON") { [weak result] in
+                    guard let result else { return }
+                    copyVisible(result, format: .json)
+                    copyPanel?.dismiss()
+                }
+            }
+            let content = rows
+                .padding(.horizontal, 5)
+                .padding(.vertical, 6)
+                .frame(minWidth: 170)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(.regularMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(
+                                    colorScheme == .dark
+                                        ? Color.primary.opacity(0.14)
+                                        : Color(nsColor: .separatorColor),
+                                    lineWidth: 1
+                                )
+                        )
+                )
+            let hosting = NSHostingView(rootView: content)
+            copyPanel = DropdownPanel(
+                anchorScreenRect: copyAnchor,
+                width: 170,
+                content: hosting,
+                onDismiss: {
+                    copyPanel = nil
+                    lastPillDismiss = Date()
+                }
+            )
         }
     }
 
@@ -742,4 +897,33 @@ private struct QueryErrorView: View {
     }
 }
 
+private struct ResultsPillItem: View {
+    let title: String
+    let action: () -> Void
+    @State private var hovered = false
 
+    init(_ title: String, action: @escaping () -> Void) {
+        self.title = title
+        self.action = action
+    }
+
+    var body: some View {
+        Button {
+            action()
+        } label: {
+            Text(title)
+                .font(.system(size: 12))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(hovered ? 0.12 : 0.0))
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerCursor()
+        .onHover { hovered = $0 }
+    }
+}
