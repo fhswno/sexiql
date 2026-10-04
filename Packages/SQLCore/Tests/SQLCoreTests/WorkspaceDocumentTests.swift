@@ -205,6 +205,68 @@ final class WorkspaceDocumentTests: XCTestCase {
         XCTAssertEqual(try store.load(), doc)
     }
 
+    func testLegacyTabWithoutKindDecodesAsQuery() throws {
+        let legacy = """
+        {"id":"00000000-0000-0000-0000-000000000002","title":"old","sql":"SELECT 1"}
+        """.data(using: .utf8)!
+        let tab = try JSONDecoder().decode(EditorTabState.self, from: legacy)
+        XCTAssertEqual(tab.kind, .query)
+
+        let canvas = EditorTabState(title: "Canvas · Local", titleIsCustom: true, kind: .canvas)
+        let decoded = try JSONDecoder().decode(EditorTabState.self, from: try JSONEncoder().encode(canvas))
+        XCTAssertEqual(decoded.kind, .canvas)
+        XCTAssertEqual(decoded, canvas)
+    }
+
+    func testDocumentCanvasFieldsRoundTripAndLegacyDefaults() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("WorkspaceDocumentTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let store = WorkspaceStore(baseDirectory: dir)
+        let profileID = UUID()
+        let doc = WorkspaceDocument(
+            connections: [ConnectionProfile(name: "Prod", kind: .postgres)],
+            canvasLayouts: [
+                "\(profileID):public": [
+                    "users": CanvasPosition(x: 120, y: 80),
+                    "orders": CanvasPosition(x: 420, y: 240),
+                ]
+            ],
+            canvasViewStates: [
+                profileID.uuidString: CanvasViewState(
+                    hiddenTables: ["legacy_table"],
+                    cameraX: -230.5,
+                    cameraY: 90.25,
+                    cameraScale: 0.75
+                )
+            ],
+            virtualRelationships: [
+                profileID: [
+                    VirtualRelationship(
+                        fromTable: "users",
+                        fromColumn: "email",
+                        toTable: "profiles",
+                        toColumn: "user_email"
+                    )
+                ]
+            ]
+        )
+        try store.save(doc)
+        let loaded = try store.load()
+        XCTAssertEqual(loaded, doc)
+        XCTAssertEqual(loaded?.canvasLayouts["\(profileID):public"]?["users"], CanvasPosition(x: 120, y: 80))
+        XCTAssertEqual(loaded?.virtualRelationships[profileID]?.first?.fromColumn, "email")
+
+        let legacy = """
+        {"version":2,"connections":[],"openTabs":[],"settings":{}}
+        """.data(using: .utf8)!
+        let migrated = try JSONDecoder().decode(WorkspaceDocument.self, from: legacy)
+        XCTAssertTrue(migrated.canvasLayouts.isEmpty)
+        XCTAssertTrue(migrated.virtualRelationships.isEmpty)
+        XCTAssertNil(migrated.canvasViewStates["x"]?.cameraScale)
+    }
+
     func testSavedFileIsOwnerReadableOnly() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("WorkspaceDocumentTests-\(UUID().uuidString)", isDirectory: true)
