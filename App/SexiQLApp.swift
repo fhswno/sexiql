@@ -12,7 +12,6 @@ struct SexiQLApp: App {
             ContentView()
                 .environment(model)
                 .frame(minWidth: 1040, minHeight: 640)
-                .preferredColorScheme(preferredScheme)
                 .onAppear {
                     AppDelegate.shared?.workspace = model
                 }
@@ -33,6 +32,11 @@ struct SexiQLApp: App {
                     model.newTab()
                 }
                 .keyboardShortcut("t", modifiers: .command)
+                Button("New Schema Canvas") {
+                    model.newCanvasTab(profileID: model.selectedConnectionID)
+                }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .disabled(!model.canOpenCanvasTab)
                 Button("Open…") {
                     model.openQueryFile()
                 }
@@ -54,6 +58,12 @@ struct SexiQLApp: App {
                 }
                 .keyboardShortcut("s", modifiers: [.command, .option])
                 .disabled(model.selectedTabID == nil)
+                Button("Export Canvas as PNG…") {
+                    if let tabID = model.selectedTabID {
+                        model.exportCanvasPNG(for: tabID)
+                    }
+                }
+                .disabled(!model.selectedTabIsCanvas)
             }
             CommandGroup(after: .saveItem) {
                 Button("Close Tab") {
@@ -253,15 +263,6 @@ struct SexiQLApp: App {
         Settings {
             SettingsView()
                 .environment(model)
-                .preferredColorScheme(preferredScheme)
-        }
-    }
-
-    private var preferredScheme: ColorScheme? {
-        switch model.appearance {
-        case .system: nil
-        case .light: .light
-        case .dark: .dark
         }
     }
 }
