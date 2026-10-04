@@ -33,7 +33,7 @@ struct AIPanelView: View {
                     model.aiPanelVisible = false
                 }
             )
-            Divider()
+            HairlineDivider()
             if messages.isEmpty && error == nil && !streaming {
                 AIPanelEmptyState(
                     onExplain: {
@@ -70,7 +70,7 @@ struct AIPanelView: View {
             if let error, !error.isEmpty {
                 AIPanelErrorBanner(text: error)
             }
-            Divider()
+            HairlineDivider()
             AIPanelComposer(
                 draft: $draft,
                 isEnabled: tabID != nil && !streaming,
