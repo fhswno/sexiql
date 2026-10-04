@@ -8,7 +8,7 @@ import SQLImportExport
 import SQLExplainer
 
 extension WorkspaceModel {
-    // MARK: - Schema browsing
+    // MARK: - Schema Browsing
 
     func loadSchema(for profile: ConnectionProfile) async {
         guard let connection = await connectionManager.connection(for: profile.id) else {
@@ -88,7 +88,7 @@ extension WorkspaceModel {
     func refreshSchema() {
         guard let id = selectedConnectionID,
               let profile = document.connections.first(where: { $0.id == id }) else { return }
-        Task { await loadSchema(for: profile) }
+        refreshSchema(for: id)
     }
 
     var filteredSchemaObjects: [SchemaObject] {
@@ -255,7 +255,10 @@ extension WorkspaceModel {
 
     func refreshSchema(for profileID: UUID) {
         guard let profile = document.connections.first(where: { $0.id == profileID }) else { return }
-        Task { await loadSchema(for: profile) }
+        Task {
+            await loadSchema(for: profile)
+            await refreshOpenCanvasTabs(for: profileID)
+        }
     }
 
     func selectEditorTab(_ tabID: UUID) {
