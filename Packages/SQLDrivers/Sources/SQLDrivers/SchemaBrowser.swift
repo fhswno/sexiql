@@ -272,23 +272,27 @@ public enum SchemaBrowser: Sendable {
         let schema = object.schema ?? "public"
         let sql = """
         SELECT c.column_name, c.data_type, c.is_nullable,
-               CASE WHEN tc.constraint_type = 'PRIMARY KEY' THEN true ELSE false END AS is_pk
+               EXISTS (
+                 SELECT 1
+                 FROM information_schema.table_constraints tc
+                 JOIN information_schema.key_column_usage kcu
+                   ON kcu.constraint_name = tc.constraint_name
+                  AND kcu.table_schema = tc.table_schema
+                  AND kcu.column_name = c.column_name
+                 WHERE tc.constraint_type = 'PRIMARY KEY'
+                   AND tc.table_schema = c.table_schema
+                   AND tc.table_name = c.table_name
+               ) AS is_pk
         FROM information_schema.columns c
-        LEFT JOIN information_schema.key_column_usage kcu
-          ON c.table_schema = kcu.table_schema
-         AND c.table_name = kcu.table_name
-         AND c.column_name = kcu.column_name
-        LEFT JOIN information_schema.table_constraints tc
-          ON kcu.constraint_name = tc.constraint_name
-         AND kcu.table_schema = tc.table_schema
-         AND tc.constraint_type = 'PRIMARY KEY'
         WHERE c.table_schema = $1 AND c.table_name = $2
         ORDER BY c.ordinal_position
         """
         let result = try await connection.execute(sql, parameters: [.string(schema), .string(object.name)])
+        var seen = Set<String>()
         return result.rows.compactMap { row -> SchemaColumn? in
             guard row.values.count >= 4,
                   case .string(let name) = row.values[0] else { return nil }
+            guard seen.insert(name).inserted else { return nil }
             let typeName: String
             if case .string(let t) = row.values[1] { typeName = t } else { typeName = "" }
             let nullable: Bool

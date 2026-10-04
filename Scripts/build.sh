@@ -34,7 +34,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$OBJ" "$MODULES"
 # Sparkle framework (pinned download, checksum-verified; skipped when cached)
 Scripts/install_sparkle.sh
 
-PACKAGES=(SQLCore SQLTunnel SQLDrivers SQLEditor SQLGrid SQLExplainer SQLImportExport SQLUI)
+PACKAGES=(SQLCore SQLTunnel SQLDrivers SQLEditor SQLGrid SQLExplainer SQLImportExport SQLCanvas SQLUI)
 
 for pkg in "${PACKAGES[@]}"; do
   src_dir="Packages/$pkg/Sources"

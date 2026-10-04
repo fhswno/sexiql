@@ -17,8 +17,8 @@ struct EditorAreaView: View {
     var body: some View {
         VStack(spacing: 0) {
             tabBar
-            Divider()
-            if model.editorAIComposerVisible {
+            HairlineDivider()
+            if model.editorAIComposerVisible && !model.selectedTabIsCanvas {
                 EditorAIComposerBar()
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -45,12 +45,17 @@ struct EditorAreaView: View {
             }
             .background(.windowBackground)
         } else {
-            let openIDs = model.document.openTabs.map(\.id)
+            let selectedTab = model.document.openTabs.first(where: { $0.id == model.selectedTabID })
+            let openIDs = model.document.openTabs.filter { $0.kind == .query }.map(\.id)
             let selected = model.selectedTabID
             let showResults = selected.map { model.showsResultsPane(for: $0) } ?? false
 
             GeometryReader { geo in
                 VStack(spacing: 0) {
+                    if let selectedTab, selectedTab.kind == .canvas {
+                        SchemaCanvasContainerView(tabID: selectedTab.id)
+                            .frame(minHeight: SexiQLLayout.editorMinHeight, maxHeight: .infinity)
+                    } else {
                     TabEditorHostRepresentable(
                     openTabIDs: openIDs,
                     selectedTabID: selected,
@@ -117,6 +122,7 @@ struct EditorAreaView: View {
                     ResultsPaneView(tabID: selected)
                         .frame(height: clampedResultsHeight(availableHeight: geo.size.height))
                 }
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -246,11 +252,19 @@ struct EditorAreaView: View {
                 Button {
                     model.selectEditorTab(tab.id)
                 } label: {
-                    Text(tab.title)
-                        .font(SexiQLType.rowTitle)
-                        .lineLimit(1)
-                        .frame(maxWidth: SexiQLLayout.tabMaxWidth, alignment: .leading)
-                        .contentShape(Rectangle())
+                    HStack(spacing: 6) {
+                        if tab.kind == .canvas {
+                            Image(systemName: "flowchart")
+                                .font(.system(size: 11, weight: .medium))
+                                .frame(width: 13, height: 13)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(tab.title)
+                            .font(SexiQLType.rowTitle)
+                            .lineLimit(1)
+                            .frame(maxWidth: SexiQLLayout.tabMaxWidth, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
                 }
                 .buttonStyle(.plain).pointerCursor()
                 .simultaneousGesture(

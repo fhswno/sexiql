@@ -16,7 +16,7 @@ struct SidebarView: View {
                 selection: sidebarModeBinding
             )
 
-            Divider()
+            HairlineDivider()
 
             Group {
                 switch model.sidebarMode {

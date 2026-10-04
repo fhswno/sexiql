@@ -244,6 +244,7 @@ extension WorkspaceModel {
         tabID: UUID
     ) async {
         let start = Date()
+        var changedSchemaDuringBatch = false
         for (index, statement) in statements.enumerated() {
             if Task.isCancelled {
                 for s in states where s.status == .pending || s.status == .running || s.status == .streaming {
@@ -332,7 +333,7 @@ extension WorkspaceModel {
                     state.duration = finishDuration(state, batchStart: start)
                     recordHistory(statement.text, profileID: profileID)
                     if Self.statementChangesSchema(statement.text) {
-                        refreshSchema(for: profileID)
+                        changedSchemaDuringBatch = true
                     }
                     if state.status == .complete, !state.sqlColumns.isEmpty {
                         Task { await resolveEditable(for: state, profileID: profileID) }
@@ -360,6 +361,10 @@ extension WorkspaceModel {
                     return
                 }
             }
+        }
+
+        if changedSchemaDuringBatch {
+            refreshSchema(for: profileID)
         }
     }
 

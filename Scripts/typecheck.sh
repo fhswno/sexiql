@@ -34,7 +34,7 @@ run_tc "XCTest runtime" \
   -sdk "$SDK" -target "$TARGET" \
   Scripts/TestRuntime.swift
 
-PACKAGES=(SQLCore SQLTunnel SQLDrivers SQLEditor SQLGrid SQLExplainer SQLImportExport SQLUI)
+PACKAGES=(SQLCore SQLTunnel SQLDrivers SQLEditor SQLGrid SQLExplainer SQLImportExport SQLCanvas SQLUI)
 
 for pkg in "${PACKAGES[@]}"; do
   src_dir="Packages/$pkg/Sources"
@@ -62,8 +62,8 @@ for pkg in "${PACKAGES[@]}"; do
 done
 
 app_sources=$(find App -name '*.swift' | sort)
-echo ">> App target"
-swiftc -typecheck -swift-version 6 -parse-as-library $app_sources \
+run_tc "App target" \
+  -typecheck -swift-version 6 -parse-as-library $app_sources \
   -I "$OUT" -F "$PWD/Vendor" -sdk "$SDK" -target "$TARGET"
 
 if [ "$STRICT" = "1" ] && grep -q "warning:" "$LOG"; then

@@ -4,13 +4,11 @@ import SQLUI
 
 struct SettingsChrome: View {
     @Bindable var model: WorkspaceModel
-    var preferredScheme: ColorScheme?
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         SettingsView()
             .environment(model)
-            .preferredColorScheme(preferredScheme)
             .tint(SexiQLColors.chromeTint(model.document.settings.tintName, scheme: colorScheme))
     }
 }
@@ -49,6 +47,23 @@ struct SettingsView: View {
                         .pointerCursor()
                         Toggle("Compact result grid", isOn: compactGridBinding)
                             .pointerCursor()
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text("Relationship notation")
+                                Spacer()
+                                Picker("", selection: edgeNotationBinding) {
+                                    Text("1 / N labels").tag(EdgeNotation.labels)
+                                    Text("Crow's foot").tag(EdgeNotation.crowFoot)
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                                .fixedSize()
+                                .pointerCursor()
+                            }
+                            Text("How foreign-key edges are marked on the schema canvas.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         VStack(alignment: .leading, spacing: 3) {
                             HStack {
                                 Text("Copy selected rows as")
@@ -210,6 +225,16 @@ struct SettingsView: View {
             get: { model.document.settings.tintName },
             set: {
                 model.document.settings.tintName = $0
+                model.saveWorkspace()
+            }
+        )
+    }
+
+    private var edgeNotationBinding: Binding<EdgeNotation> {
+        Binding(
+            get: { model.document.settings.edgeNotation },
+            set: {
+                model.document.settings.edgeNotation = $0
                 model.saveWorkspace()
             }
         )

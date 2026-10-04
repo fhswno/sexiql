@@ -12,6 +12,16 @@ struct SexiQLToolbar: ToolbarContent {
         .sharedBackgroundVisibility(.hidden)
 
         ToolbarItem(placement: .primaryAction) {
+            Button {
+                model.newCanvasTab(profileID: model.selectedConnectionID)
+            } label: {
+                Label("Schema Canvas", systemImage: "flowchart")
+            }
+            .help("New Schema Canvas (⌘⇧C)").pointerCursor()
+            .disabled(!model.canOpenCanvasTab)
+        }
+
+        ToolbarItem(placement: .primaryAction) {
             if model.isQueryRunning(on: model.selectedTabID) {
                 Button {
                     if let tabID = model.selectedTabID {
@@ -30,7 +40,7 @@ struct SexiQLToolbar: ToolbarContent {
                     Label("Run", systemImage: "play.fill")
                 }
                 .help("Run Query (⌘⏎)").pointerCursor()
-                .disabled(model.selectedTabID == nil)
+                .disabled(model.selectedTabID == nil || model.selectedTabIsCanvas)
             }
         }
 
@@ -43,7 +53,7 @@ struct SexiQLToolbar: ToolbarContent {
                 Label("Explain Plan", systemImage: "point.3.connected.trianglepath.dotted")
             }
             .help("Show engine query plan (⌘E). Uses selection when text is highlighted.").pointerCursor()
-            .disabled(model.selectedTabID == nil || (model.selectedTabID.map { model.explainingTabs.contains($0) } ?? true))
+            .disabled(model.selectedTabID == nil || model.selectedTabIsCanvas || (model.selectedTabID.map { model.explainingTabs.contains($0) } ?? true))
         }
 
         ToolbarItem(placement: .primaryAction) {
@@ -55,7 +65,7 @@ struct SexiQLToolbar: ToolbarContent {
                 Label("Explain with AI", systemImage: "sparkles")
             }
             .help("Explain SQL with local Ollama (⌘⇧E). Opens AI panel. Uses selection when highlighted.").pointerCursor()
-            .disabled(model.selectedTabID == nil)
+            .disabled(model.selectedTabID == nil || model.selectedTabIsCanvas)
         }
 
         ToolbarItem(placement: .primaryAction) {

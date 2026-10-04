@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import SQLCanvas
 import SQLCore
 import SQLDrivers
 import SQLGrid
@@ -66,6 +67,8 @@ final class WorkspaceModel {
     var aiStreamingTabs: Set<UUID> = []
 
     var aiPanelVisible = false
+    var canvasViewModels: [UUID: CanvasViewModel] = [:]
+    var canvasNarrationModels: [UUID: CanvasNarrationModel] = [:]
 
     var showingAISetup = false
     var aiSetupReason: AISetupReason?

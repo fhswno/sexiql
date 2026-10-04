@@ -126,7 +126,6 @@ public enum AppearanceMode: String, Codable, Sendable, CaseIterable, Identifiabl
         }
     }
 
-    /// Next mode when cycling with ⌘⇧A.
     public var next: AppearanceMode {
         switch self {
         case .system: .light
@@ -148,6 +147,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
     public var ollamaBaseURL: String
     public var ollamaModel: String
     public var resultRowLimit: Int?
+    public var edgeNotation: EdgeNotation
 
     public init(
         tintName: String? = nil,
@@ -160,7 +160,8 @@ public struct UserSettings: Codable, Sendable, Equatable {
         aiEnabled: Bool = false,
         ollamaBaseURL: String = "http://127.0.0.1:11434",
         ollamaModel: String = "",
-        resultRowLimit: Int? = 1000
+        resultRowLimit: Int? = 1000,
+        edgeNotation: EdgeNotation = .labels
     ) {
         self.tintName = tintName
         self.autoRestoreWorkspace = autoRestoreWorkspace
@@ -173,13 +174,14 @@ public struct UserSettings: Codable, Sendable, Equatable {
         self.ollamaBaseURL = ollamaBaseURL
         self.ollamaModel = ollamaModel
         self.resultRowLimit = resultRowLimit
+        self.edgeNotation = edgeNotation
     }
 
     private enum CodingKeys: String, CodingKey {
         case tintName, autoRestoreWorkspace, confirmBeforeDisconnect, layout, compactGrid, appearance
         case copySelectedRowsFormat
         case aiEnabled, ollamaBaseURL, ollamaModel
-        case resultRowLimit
+        case resultRowLimit, edgeNotation
     }
 
     public init(from decoder: Decoder) throws {
@@ -199,6 +201,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
         } else {
             resultRowLimit = 1000
         }
+        edgeNotation = try container.decodeIfPresent(EdgeNotation.self, forKey: .edgeNotation) ?? .labels
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -214,7 +217,53 @@ public struct UserSettings: Codable, Sendable, Equatable {
         try container.encode(ollamaBaseURL, forKey: .ollamaBaseURL)
         try container.encode(ollamaModel, forKey: .ollamaModel)
         try container.encode(resultRowLimit, forKey: .resultRowLimit)
+        try container.encode(edgeNotation, forKey: .edgeNotation)
     }
+}
+
+public enum EdgeNotation: String, Codable, Sendable {
+    case labels
+    case crowFoot
+}
+
+public struct CanvasViewState: Codable, Sendable, Equatable {
+    public var density: String?
+    public var hiddenTables: [String]
+    public var cameraX: Double?
+    public var cameraY: Double?
+    public var cameraScale: Double?
+
+    public init(
+        density: String? = nil,
+        hiddenTables: [String] = [],
+        cameraX: Double? = nil,
+        cameraY: Double? = nil,
+        cameraScale: Double? = nil
+    ) {
+        self.density = density
+        self.hiddenTables = hiddenTables
+        self.cameraX = cameraX
+        self.cameraY = cameraY
+        self.cameraScale = cameraScale
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case density, hiddenTables, cameraX, cameraY, cameraScale
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        density = try container.decodeIfPresent(String.self, forKey: .density)
+        hiddenTables = try container.decodeIfPresent([String].self, forKey: .hiddenTables) ?? []
+        cameraX = try container.decodeIfPresent(Double.self, forKey: .cameraX)
+        cameraY = try container.decodeIfPresent(Double.self, forKey: .cameraY)
+        cameraScale = try container.decodeIfPresent(Double.self, forKey: .cameraScale)
+    }
+}
+
+public enum TabKind: String, Codable, Sendable {
+    case query
+    case canvas
 }
 
 public struct EditorTabState: Codable, Sendable, Equatable, Identifiable {
@@ -224,6 +273,7 @@ public struct EditorTabState: Codable, Sendable, Equatable, Identifiable {
     public var sql: String
     public var titleIsCustom: Bool
     public var fileURL: URL?
+    public var kind: TabKind
 
     public init(
         id: UUID = UUID(),
@@ -231,7 +281,8 @@ public struct EditorTabState: Codable, Sendable, Equatable, Identifiable {
         connectionProfileID: UUID? = nil,
         sql: String = "",
         titleIsCustom: Bool = false,
-        fileURL: URL? = nil
+        fileURL: URL? = nil,
+        kind: TabKind = .query
     ) {
         self.id = id
         self.title = title
@@ -239,10 +290,11 @@ public struct EditorTabState: Codable, Sendable, Equatable, Identifiable {
         self.sql = sql
         self.titleIsCustom = titleIsCustom
         self.fileURL = fileURL
+        self.kind = kind
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, connectionProfileID, sql, titleIsCustom, fileURL
+        case id, title, connectionProfileID, sql, titleIsCustom, fileURL, kind
     }
 
     public init(from decoder: Decoder) throws {
@@ -253,6 +305,7 @@ public struct EditorTabState: Codable, Sendable, Equatable, Identifiable {
         sql = try container.decodeIfPresent(String.self, forKey: .sql) ?? ""
         titleIsCustom = try container.decodeIfPresent(Bool.self, forKey: .titleIsCustom) ?? false
         fileURL = try container.decodeIfPresent(URL.self, forKey: .fileURL)
+        kind = try container.decodeIfPresent(TabKind.self, forKey: .kind) ?? .query
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -263,6 +316,7 @@ public struct EditorTabState: Codable, Sendable, Equatable, Identifiable {
         try container.encode(sql, forKey: .sql)
         try container.encode(titleIsCustom, forKey: .titleIsCustom)
         try container.encodeIfPresent(fileURL, forKey: .fileURL)
+        try container.encode(kind, forKey: .kind)
     }
 
     public var isDefaultUntitledTitle: Bool {
@@ -310,6 +364,55 @@ public struct SavedQuery: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
+public struct CanvasPosition: Codable, Sendable, Equatable {
+    public var x: Double
+    public var y: Double
+
+    public init(x: Double, y: Double) {
+        self.x = x
+        self.y = y
+    }
+}
+
+public struct VirtualRelationship: Codable, Sendable, Equatable, Identifiable {
+    public var id: UUID
+    public var fromTable: String
+    public var fromColumn: String
+    public var toTable: String
+    public var toColumn: String
+    public var createdAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        fromTable: String,
+        fromColumn: String,
+        toTable: String,
+        toColumn: String,
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.fromTable = fromTable
+        self.fromColumn = fromColumn
+        self.toTable = toTable
+        self.toColumn = toColumn
+        self.createdAt = createdAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, fromTable, fromColumn, toTable, toColumn, createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        fromTable = try container.decode(String.self, forKey: .fromTable)
+        fromColumn = try container.decode(String.self, forKey: .fromColumn)
+        toTable = try container.decode(String.self, forKey: .toTable)
+        toColumn = try container.decode(String.self, forKey: .toColumn)
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+    }
+}
+
 public struct WorkspaceDocument: Codable, Sendable, Equatable {
     public static let currentVersion = 2
     public static let historyLimit = 500
@@ -323,6 +426,9 @@ public struct WorkspaceDocument: Codable, Sendable, Equatable {
     public var settings: UserSettings
     public var history: [QueryHistoryEntry]
     public var savedQueries: [SavedQuery]
+    public var canvasLayouts: [String: [String: CanvasPosition]]
+    public var canvasViewStates: [String: CanvasViewState]
+    public var virtualRelationships: [UUID: [VirtualRelationship]]
 
     public init(
         version: Int = WorkspaceDocument.currentVersion,
@@ -333,7 +439,10 @@ public struct WorkspaceDocument: Codable, Sendable, Equatable {
         reconnectProfileIDs: [UUID] = [],
         settings: UserSettings = UserSettings(),
         history: [QueryHistoryEntry] = [],
-        savedQueries: [SavedQuery] = []
+        savedQueries: [SavedQuery] = [],
+        canvasLayouts: [String: [String: CanvasPosition]] = [:],
+        canvasViewStates: [String: CanvasViewState] = [:],
+        virtualRelationships: [UUID: [VirtualRelationship]] = [:]
     ) {
         self.version = version
         self.connections = connections
@@ -344,11 +453,14 @@ public struct WorkspaceDocument: Codable, Sendable, Equatable {
         self.settings = settings
         self.history = history
         self.savedQueries = savedQueries
+        self.canvasLayouts = canvasLayouts
+        self.canvasViewStates = canvasViewStates
+        self.virtualRelationships = virtualRelationships
     }
 
     private enum CodingKeys: String, CodingKey {
         case version, connections, openTabs, selectedTabID, selectedConnectionID, reconnectProfileIDs
-        case settings, history, savedQueries
+        case settings, history, savedQueries, canvasLayouts, canvasViewStates, virtualRelationships
     }
 
     public init(from decoder: Decoder) throws {
@@ -362,6 +474,9 @@ public struct WorkspaceDocument: Codable, Sendable, Equatable {
         settings = try container.decodeIfPresent(UserSettings.self, forKey: .settings) ?? UserSettings()
         history = try container.decodeIfPresent([QueryHistoryEntry].self, forKey: .history) ?? []
         savedQueries = try container.decodeIfPresent([SavedQuery].self, forKey: .savedQueries) ?? []
+        canvasLayouts = try container.decodeIfPresent([String: [String: CanvasPosition]].self, forKey: .canvasLayouts) ?? [:]
+        canvasViewStates = try container.decodeIfPresent([String: CanvasViewState].self, forKey: .canvasViewStates) ?? [:]
+        virtualRelationships = try container.decodeIfPresent([UUID: [VirtualRelationship]].self, forKey: .virtualRelationships) ?? [:]
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -375,5 +490,8 @@ public struct WorkspaceDocument: Codable, Sendable, Equatable {
         try container.encode(settings, forKey: .settings)
         try container.encode(history, forKey: .history)
         try container.encode(savedQueries, forKey: .savedQueries)
+        try container.encode(canvasLayouts, forKey: .canvasLayouts)
+        try container.encode(canvasViewStates, forKey: .canvasViewStates)
+        try container.encode(virtualRelationships, forKey: .virtualRelationships)
     }
 }

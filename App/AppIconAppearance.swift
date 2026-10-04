@@ -5,16 +5,15 @@ import SQLCore
 @MainActor
 enum AppIconAppearance {
     static func apply(for mode: AppearanceMode) {
-        let useLight: Bool
         switch mode {
         case .light:
-            useLight = true
+            NSApp.appearance = NSAppearance(named: .aqua)
         case .dark:
-            useLight = false
+            NSApp.appearance = NSAppearance(named: .darkAqua)
         case .system:
-            useLight = isSystemAppearanceLight()
+            NSApp.appearance = nil
         }
-        apply(light: useLight)
+        apply(light: isSystemAppearanceLight())
     }
 
     static func apply(light: Bool) {

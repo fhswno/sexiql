@@ -41,6 +41,13 @@ enum SettingsSearchIndex {
             section: .appearance
         ),
         item(
+            id: "edge-notation",
+            title: "Relationship notation",
+            subtitle: "Canvas edge style: 1/N labels or crow's foot",
+            keywords: ["edge", "notation", "crow", "foot", "cardinality", "canvas", "diagram", "relationship"],
+            section: .appearance
+        ),
+        item(
             id: "welcome-animation",
             title: "Welcome animation",
             subtitle: "Replay the first-launch welcome screen (Play Again)",
