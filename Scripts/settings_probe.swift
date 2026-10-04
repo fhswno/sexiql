@@ -42,7 +42,7 @@ struct SettingsProbe {
         )
         let hosting = NSHostingView(
             rootView: AnyView(
-                SettingsChrome(model: model, preferredScheme: schemeFor(model.appearance))
+                SettingsChrome(model: model)
                     .frame(width: 640, height: 640)
             )
         )
@@ -69,18 +69,11 @@ struct SettingsProbe {
     }
 
     @MainActor
-    private static func schemeFor(_ mode: AppearanceMode) -> ColorScheme? {
-        switch mode {
-        case .light: .light
-        case .dark: .dark
-        case .system: nil
-        }
-    }
 
     @MainActor
     private static func refreshRoot(_ hosting: NSHostingView<AnyView>, model: WorkspaceModel) {
         hosting.rootView = AnyView(
-            SettingsChrome(model: model, preferredScheme: schemeFor(model.appearance))
+            SettingsChrome(model: model)
                 .frame(width: 640, height: 640)
         )
     }
