@@ -20,6 +20,8 @@ packages:
     path: Packages/SQLExplainer
   SQLUI:
     path: Packages/SQLUI
+  SQLCanvas:
+    path: Packages/SQLCanvas
 targets:
   SexiQL:
     type: application
@@ -37,6 +39,7 @@ targets:
       - package: SQLImportExport
       - package: SQLExplainer
       - package: SQLUI
+      - package: SQLCanvas
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sexiql.app
