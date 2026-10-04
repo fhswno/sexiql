@@ -86,8 +86,7 @@ extension WorkspaceModel {
     }
 
     func refreshSchema() {
-        guard let id = selectedConnectionID,
-              let profile = document.connections.first(where: { $0.id == id }) else { return }
+        guard let id = selectedConnectionID else { return }
         refreshSchema(for: id)
     }
 
