@@ -19,7 +19,7 @@ swiftc -swift-version 6 -c -parse-as-library \
   -o "$XCTEST/XCTest.o" \
   Scripts/TestRuntime.swift
 
-PACKAGES=(SQLCore SQLTunnel SQLDrivers SQLEditor SQLGrid SQLExplainer SQLImportExport SQLUI)
+PACKAGES=(SQLCore SQLTunnel SQLDrivers SQLEditor SQLGrid SQLExplainer SQLImportExport SQLCanvas SQLUI)
 
 for pkg in "${PACKAGES[@]}"; do
   src_dir="Packages/$pkg/Sources"
