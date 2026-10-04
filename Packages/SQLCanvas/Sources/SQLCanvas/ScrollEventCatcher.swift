@@ -1,9 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// Captures two-finger scroll (and momentum) events that occur over the canvas
-/// and forwards them as pan deltas. Registered as a local NSEvent monitor and
-/// scoped by geometry, so scrolling elsewhere in the app is untouched.
 struct ScrollEventCatcher: NSViewRepresentable {
     var isEnabled: Bool = true
     var onScroll: (CGSize) -> Void
