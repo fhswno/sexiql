@@ -19,29 +19,37 @@ struct ContentView: View {
 
     var body: some View {
         GeometryReader { geo in
+            let sidebarEdge = clampedSidebarWidth(totalWidth: geo.size.width)
+            let aiPanelEdge = snappedHalfPoint(geo.size.width - clampedAIPanelWidth(totalWidth: geo.size.width))
             HStack(spacing: 0) {
                 if model.sidebarVisible {
-                    Group {
-                        SidebarView()
-                            .frame(width: clampedSidebarWidth(totalWidth: geo.size.width))
-                        sidebarDivider(totalWidth: geo.size.width)
-                    }
-                    .transition(.move(edge: .leading).combined(with: .opacity))
+                    SidebarView()
+                        .frame(width: sidebarEdge)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
                 }
 
                 EditorAreaView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 if model.aiPanelVisible {
-                    Group {
-                        aiPanelDivider(totalWidth: geo.size.width)
-                        AIPanelView()
-                            .frame(width: clampedAIPanelWidth(totalWidth: geo.size.width))
-                    }
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    AIPanelView()
+                        .frame(width: max(0, geo.size.width - aiPanelEdge))
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .leading) {
+                if model.sidebarVisible {
+                    sidebarDivider(totalWidth: geo.size.width)
+                        .offset(x: sidebarEdge - horizontalDividerHeight / 2)
+                }
+            }
+            .overlay(alignment: .leading) {
+                if model.aiPanelVisible {
+                    aiPanelDivider(totalWidth: geo.size.width)
+                        .offset(x: aiPanelEdge - horizontalDividerHeight / 2)
+                }
+            }
             .animation(.spring(response: 0.3, dampingFraction: 0.85), value: model.sidebarVisible)
             .animation(.spring(response: 0.3, dampingFraction: 0.85), value: model.aiPanelVisible)
         }
@@ -185,18 +193,24 @@ struct ContentView: View {
         return min(max(sidebarWidth, SexiQLLayout.sidebarMin), SexiQLLayout.sidebarMax)
     }
 
+    private func snappedHalfPoint(_ value: CGFloat) -> CGFloat {
+        (value * 2).rounded() / 2
+    }
+
     private func clampedSidebarWidth(totalWidth: CGFloat) -> CGFloat {
         let maxAllowed = max(
             SexiQLLayout.sidebarMin,
-            totalWidth - editorMinWidth - horizontalDividerHeight - reservedAIPanelWidth
+            totalWidth - editorMinWidth - reservedAIPanelWidth
         )
-        return min(max(sidebarWidth, SexiQLLayout.sidebarMin), min(SexiQLLayout.sidebarMax, maxAllowed))
+        return snappedHalfPoint(
+            min(max(sidebarWidth, SexiQLLayout.sidebarMin), min(SexiQLLayout.sidebarMax, maxAllowed))
+        )
     }
 
     private func clampedAIPanelWidth(totalWidth: CGFloat) -> CGFloat {
         let maxAllowed = max(
             SexiQLLayout.inspectorMin + 40,
-            totalWidth - editorMinWidth - horizontalDividerHeight - reservedSidebarWidth
+            totalWidth - editorMinWidth - reservedSidebarWidth
         )
         return min(max(aiPanelWidth, SexiQLLayout.inspectorMin + 40), min(SexiQLLayout.inspectorMax + 80, maxAllowed))
     }
@@ -236,9 +250,8 @@ struct ContentView: View {
         gesture: some Gesture
     ) -> some View {
         ZStack {
-            Rectangle()
-                .fill(Color(nsColor: .separatorColor).opacity(0.45))
-                .frame(width: 1)
+            HairlineDivider(orientation: .vertical)
+                .offset(x: 0.25)
         }
         .frame(width: horizontalDividerHeight)
         .frame(maxHeight: .infinity)
