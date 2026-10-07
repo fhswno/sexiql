@@ -90,6 +90,17 @@ final class WorkspaceDocumentTests: XCTestCase {
         XCTAssertNil(try JSONDecoder().decode(UserSettings.self, from: explicitNull).resultRowLimit)
     }
 
+    func testHiddenToolbarButtonsRoundTripAndLegacyDefault() throws {
+        let customized = UserSettings(hiddenToolbarButtons: ["explain", "focus"])
+        let decoded = try JSONDecoder().decode(UserSettings.self, from: JSONEncoder().encode(customized))
+        XCTAssertEqual(decoded.hiddenToolbarButtons, ["explain", "focus"])
+
+        let legacy = """
+        {"autoRestoreWorkspace":true}
+        """.data(using: .utf8)!
+        XCTAssertEqual(try JSONDecoder().decode(UserSettings.self, from: legacy).hiddenToolbarButtons, [])
+    }
+
     func testEditorTabFileURLDecodesDefaultNil() throws {
         let legacy = """
         {"id":"00000000-0000-0000-0000-000000000001","title":"old","sql":"SELECT 1"}
