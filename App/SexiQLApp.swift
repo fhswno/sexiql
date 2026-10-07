@@ -170,17 +170,17 @@ struct SexiQLApp: App {
                 Button(model.sidebarVisible ? "Hide Sidebar" : "Show Sidebar") {
                     model.toggleSidebar()
                 }
-                .keyboardShortcut("0", modifiers: .command)
+                .keyboardShortcut("b", modifiers: .command)
 
                 Button(model.aiPanelVisible ? "Hide AI Panel" : "Show AI Panel") {
                     model.toggleAIPanel()
                 }
-                .keyboardShortcut("0", modifiers: [.command, .option])
+                .keyboardShortcut("b", modifiers: [.command, .shift])
 
                 Button(model.resultsCollapsed ? "Show Results" : "Hide Results") {
                     model.toggleResults()
                 }
-                .keyboardShortcut("y", modifiers: [.command, .shift])
+                .keyboardShortcut("j", modifiers: .command)
 
                 Button(model.inspectorVisible ? "Hide Value Inspector" : "Show Value Inspector") {
                     model.toggleInspector()

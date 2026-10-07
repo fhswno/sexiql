@@ -148,6 +148,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
     public var ollamaModel: String
     public var resultRowLimit: Int?
     public var edgeNotation: EdgeNotation
+    public var hiddenToolbarButtons: [String]
 
     public init(
         tintName: String? = nil,
@@ -161,7 +162,8 @@ public struct UserSettings: Codable, Sendable, Equatable {
         ollamaBaseURL: String = "http://127.0.0.1:11434",
         ollamaModel: String = "",
         resultRowLimit: Int? = 1000,
-        edgeNotation: EdgeNotation = .labels
+        edgeNotation: EdgeNotation = .labels,
+        hiddenToolbarButtons: [String] = []
     ) {
         self.tintName = tintName
         self.autoRestoreWorkspace = autoRestoreWorkspace
@@ -175,6 +177,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
         self.ollamaModel = ollamaModel
         self.resultRowLimit = resultRowLimit
         self.edgeNotation = edgeNotation
+        self.hiddenToolbarButtons = hiddenToolbarButtons
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -182,6 +185,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
         case copySelectedRowsFormat
         case aiEnabled, ollamaBaseURL, ollamaModel
         case resultRowLimit, edgeNotation
+        case hiddenToolbarButtons
     }
 
     public init(from decoder: Decoder) throws {
@@ -202,6 +206,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
             resultRowLimit = 1000
         }
         edgeNotation = try container.decodeIfPresent(EdgeNotation.self, forKey: .edgeNotation) ?? .labels
+        hiddenToolbarButtons = try container.decodeIfPresent([String].self, forKey: .hiddenToolbarButtons) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -218,6 +223,7 @@ public struct UserSettings: Codable, Sendable, Equatable {
         try container.encode(ollamaModel, forKey: .ollamaModel)
         try container.encode(resultRowLimit, forKey: .resultRowLimit)
         try container.encode(edgeNotation, forKey: .edgeNotation)
+        try container.encode(hiddenToolbarButtons, forKey: .hiddenToolbarButtons)
     }
 }
 
