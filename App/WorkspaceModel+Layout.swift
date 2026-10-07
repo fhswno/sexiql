@@ -8,7 +8,71 @@ import SQLImportExport
 import SQLExplainer
 
 extension WorkspaceModel {
-    // MARK: - Layout chrome
+    // MARK: - Layout Chrome
+
+    enum ToolbarButtonID: String, CaseIterable {
+        case canvas
+        case run
+        case explain
+        case explainAI
+        case clear
+        case results
+        case aiPanel
+        case focus
+
+        var title: String {
+            switch self {
+            case .canvas: "Schema Canvas"
+            case .run: "Run Query"
+            case .explain: "Explain Plan"
+            case .explainAI: "Explain with AI"
+            case .clear: "Clear Results"
+            case .results: "Results Pane"
+            case .aiPanel: "AI Panel"
+            case .focus: "Focus Mode"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .canvas: "flowchart"
+            case .run: "play.fill"
+            case .explain: "point.3.connected.trianglepath.dotted"
+            case .explainAI: "sparkles"
+            case .clear: "trash"
+            case .results: "rectangle.bottomhalf.filled"
+            case .aiPanel: "sidebar.right"
+            case .focus: "arrow.up.left.and.arrow.down.right"
+            }
+        }
+    }
+
+    var hiddenToolbarButtons: Set<ToolbarButtonID> {
+        Set(document.settings.hiddenToolbarButtons.compactMap(ToolbarButtonID.init(rawValue:)))
+    }
+
+    func isToolbarButtonHidden(_ id: ToolbarButtonID) -> Bool {
+        document.settings.hiddenToolbarButtons.contains(id.rawValue)
+    }
+
+    func setToolbarButtonHidden(_ id: ToolbarButtonID, hidden: Bool) {
+        var hiddenIDs = Set(document.settings.hiddenToolbarButtons)
+        if hidden {
+            hiddenIDs.insert(id.rawValue)
+        } else {
+            hiddenIDs.remove(id.rawValue)
+        }
+        document.settings.hiddenToolbarButtons = hiddenIDs.sorted()
+        scheduleSaveWorkspace()
+    }
+
+    func showAllToolbarButtons() {
+        guard !document.settings.hiddenToolbarButtons.isEmpty else { return }
+        document.settings.hiddenToolbarButtons = []
+        scheduleSaveWorkspace()
+    }
+
+    // MARK: - Layout Chrome
 
     var layout: LayoutState {
         get { document.settings.layout }
