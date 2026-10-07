@@ -130,7 +130,7 @@ final class TitlebarNavigationView: NSView {
         sidebarButton.imagePosition = .imageOnly
         sidebarButton.target = self
         sidebarButton.action = #selector(toggleSidebar)
-        sidebarButton.toolTip = "Toggle Sidebar (⌘0)"
+        sidebarButton.toolTip = "Toggle Sidebar (⌘B)"
         sidebarButton.translatesAutoresizingMaskIntoConstraints = false
         sidebarEffect.addSubview(sidebarButton)
 
@@ -291,7 +291,7 @@ final class TitlebarNavigationView: NSView {
     ) {
         self.items = connections
         self.selectedID = selectedID
-        sidebarButton.toolTip = sidebarVisible ? "Hide Sidebar (⌘0)" : "Show Sidebar (⌘0)"
+        sidebarButton.toolTip = sidebarVisible ? "Hide Sidebar (⌘B)" : "Show Sidebar (⌘B)"
 
         if let selectedID, let match = connections.first(where: { $0.id == selectedID }) {
             titleLabel.stringValue = match.title
