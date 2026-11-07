@@ -119,6 +119,7 @@ struct ResultsPaneView: View {
                         }
                     }
                     .padding(.vertical, SexiQLSpace.sm)
+                    .padding(.horizontal, 12)
                 }
 
                 if let statusResult = selectedStatusResult(results) {
