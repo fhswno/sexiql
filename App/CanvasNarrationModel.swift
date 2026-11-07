@@ -41,7 +41,7 @@ final class CanvasNarrationModel {
             guard let self else { return }
             defer { self.isStreaming = false }
             do {
-                try await client.chatStream(model: modelName, system: system, user: user) { delta in
+                try await client.chatStream(model: modelName, system: system, user: user) { [weak self] delta in
                     Task { @MainActor [weak self] in
                         self?.appendDelta(delta)
                     }
