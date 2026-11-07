@@ -298,7 +298,7 @@ extension WorkspaceModel {
                     model: modelName,
                     system: system,
                     messages: history
-                ) { delta in
+                ) { [weak self] delta in
                     Task { @MainActor [weak self] in
                         self?.appendAIDelta(tabID: tabID, messageID: assistantID, delta: delta)
                     }
@@ -469,7 +469,7 @@ extension WorkspaceModel {
             }
             do {
                 let client = OllamaClient(baseURLString: baseURL)
-                try await client.chatStream(model: modelName, system: system, user: user) { delta in
+                try await client.chatStream(model: modelName, system: system, user: user) { [weak self] delta in
                     Task { @MainActor [weak self] in
                         guard let self, self.editorAIBusy else { return }
                         self.editorAIRaw += delta

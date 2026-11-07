@@ -20,8 +20,7 @@ public actor PostgresConnection: DatabaseConnection {
 
     private var authStage: AuthStage = .idle
 
-    private var queryOperationBusy = false
-    private var queryOperationWaiters: [CheckedContinuation<Void, Never>] = []
+    private let queryGate = ConnectionQueryGate()
 
     public init(profile: ConnectionProfile) {
         self.profile = profile
@@ -306,28 +305,15 @@ public actor PostgresConnection: DatabaseConnection {
     }
 
     private func beginQueryOperation() async {
-        while queryOperationBusy {
-            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-                queryOperationWaiters.append(cont)
-            }
-        }
-        queryOperationBusy = true
+        await queryGate.acquire()
     }
 
     private func endQueryOperation() {
-        queryOperationBusy = false
-        guard !queryOperationWaiters.isEmpty else { return }
-        let next = queryOperationWaiters.removeFirst()
-        next.resume()
+        Task { await queryGate.release() }
     }
 
     private func resetQueryOperationGate() {
-        queryOperationBusy = false
-        let waiters = queryOperationWaiters
-        queryOperationWaiters.removeAll()
-        for waiter in waiters {
-            waiter.resume()
-        }
+        Task { await queryGate.reset() }
     }
 
     public func serverVersion() async throws -> String? {
